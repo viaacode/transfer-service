@@ -28,7 +28,7 @@ class RabbitClient:
         )
 
         self.channel = self.connection.channel()
-        self.prefetch_count = 1
+        self.prefetch_count = int(self.rabbitConfig["prefetch_count"])
 
     def listen(self, on_message_callback, queue=None):
         if queue is None:

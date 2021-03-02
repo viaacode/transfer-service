@@ -8,3 +8,4 @@ app:
       username: !ENV ${RABBITMQ_USERNAME}
       password: !ENV ${RABBITMQ_PASSWORD}
       queue: !ENV ${RABBITMQ_QUEUE}
+      prefetch_count: !ENV ${RABBITMQ_PREFETCH_COUNT}
