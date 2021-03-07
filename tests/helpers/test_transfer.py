@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import pytest
+from unittest.mock import MagicMock, patch
 
-from app.helpers.transfer import calculate_ranges
+from paramiko import SSHException
+
+from app.helpers.transfer import (
+    build_curl_command,
+    calculate_filename_part,
+    calculate_ranges,
+    transfer_part,
+)
 
 
 @pytest.mark.parametrize(
@@ -28,3 +36,101 @@ def test_calculate_ranges_error(size, number_parts, side_effect, message):
     with pytest.raises(side_effect) as e:
         calculate_ranges(size, number_parts)
     assert str(e.value) == message
+
+
+def test_build_curl_command():
+    dest = "dest file"
+    src = "source file"
+    domain = "S3 domain"
+    r = "0-100"
+    w_params = (
+        "%{speed_download},%{http_code},%{size_download},%{url_effective},%{time_total}"
+    )
+    curl_command = build_curl_command(dest, src, domain, r)
+    assert (
+        curl_command
+        == f"curl -w '{w_params}' -L -H 'host: {domain}' -H 'range: bytes={r}' -r {r} -S -s -o '{dest}' '{src}'"
+    )
+
+
+def test_calculate_filename_part():
+    assert calculate_filename_part("file.mxf", 0) == "file.mxf.part0"
+
+
+@patch("app.helpers.transfer.SSHClient")
+def test_transfer_part(ssh_client_mock):
+    """Successful transfer of a part."""
+    stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
+    # Mock the stdout result of the cURL command.
+    stdout_result = ["1000,200,1000,url,5"]
+    stdout_mock.readlines.return_value = stdout_result
+
+    client_mock = ssh_client_mock().__enter__()
+    client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
+
+    # Mock exec command
+    dest_conf = {"host": "host", "user": "user", "password": "pass"}
+    transfer_part("dest", "source", "domain", "0-100", dest_conf)
+
+    assert client_mock.set_missing_host_key_policy.call_count == 1
+    assert client_mock.connect.call_count == 1
+    assert client_mock.connect.call_args.args == ("host",)
+    assert client_mock.connect.call_args.kwargs == {
+        "port": 22,
+        "username": "user",
+        "password": "pass",
+    }
+    assert client_mock.exec_command() == (stdin_mock, stdout_mock, stderr_mock)
+
+
+@patch("app.helpers.transfer.SSHClient")
+def test_transfer_part_status_code(ssh_client_mock):
+    """HTTP error occurs when transferring a part."""
+    stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
+    # Mock the stdout result of the cURL command.
+    stdout_result = ["1000,416,1000,url,5"]
+    stdout_mock.readlines.return_value = stdout_result
+
+    client_mock = ssh_client_mock().__enter__()
+    client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
+
+    # Mock exec command
+    dest_conf = {"host": "host", "user": "user", "password": "pass"}
+    transfer_part("dest", "source", "domain", "0-100", dest_conf)
+
+    assert client_mock.set_missing_host_key_policy.call_count == 1
+    assert client_mock.connect.call_count == 1
+    assert client_mock.connect.call_args.args == ("host",)
+    assert client_mock.connect.call_args.kwargs == {
+        "port": 22,
+        "username": "user",
+        "password": "pass",
+    }
+    assert client_mock.exec_command() == (stdin_mock, stdout_mock, stderr_mock)
+
+
+@patch("app.helpers.transfer.SSHClient")
+def test_transfer_part_stderr(ssh_client_mock):
+    """Transferring a part resulting in stderr output."""
+    stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
+    # Mock the stderr result of the cURL command.
+    stderr_result = ["Error"]
+    stderr_mock.readlines.return_value = stderr_result
+
+    # Mock exec command
+    client_mock = ssh_client_mock().__enter__()
+    client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
+
+    dest_conf = {"host": "host", "user": "user", "password": "pass"}
+    transfer_part("dest", "source", "domain", "0-100", dest_conf)
+    assert True
+
+
+@patch("app.helpers.transfer.SSHClient")
+def test_transfer_part_ssh_exception(ssh_client_mock):
+    """SSH Exception occurs when connecting."""
+    client_mock = ssh_client_mock().__enter__()
+    client_mock.connect.side_effect = SSHException
+    dest_conf = {"host": "host", "user": "user", "password": "pass"}
+    transfer_part("dest", "source", "domain", "0-100", dest_conf)
+    assert not client_mock.exec_command.call_count
