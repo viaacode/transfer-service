@@ -65,20 +65,19 @@ def test_transfer_part(ssh_client_mock):
     stdout_result = ["1000,200,1000,url,5"]
     stdout_mock.readlines.return_value = stdout_result
 
+    # Mock exec command
     client_mock = ssh_client_mock().__enter__()
     client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
 
-    # Mock exec command
-    dest_conf = {"host": "host", "user": "user", "password": "pass"}
-    transfer_part("dest", "source", "domain", "0-100", dest_conf)
+    transfer_part("dest", "source", "domain", "0-100")
 
     assert client_mock.set_missing_host_key_policy.call_count == 1
     assert client_mock.connect.call_count == 1
-    assert client_mock.connect.call_args.args == ("host",)
+    assert client_mock.connect.call_args.args == ("ssh_host",)
     assert client_mock.connect.call_args.kwargs == {
         "port": 22,
-        "username": "user",
-        "password": "pass",
+        "username": "ssh_user",
+        "password": "ssh_pass",
     }
     assert client_mock.exec_command() == (stdin_mock, stdout_mock, stderr_mock)
 
@@ -91,20 +90,19 @@ def test_transfer_part_status_code(ssh_client_mock):
     stdout_result = ["1000,416,1000,url,5"]
     stdout_mock.readlines.return_value = stdout_result
 
+    # Mock exec command
     client_mock = ssh_client_mock().__enter__()
     client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
 
-    # Mock exec command
-    dest_conf = {"host": "host", "user": "user", "password": "pass"}
-    transfer_part("dest", "source", "domain", "0-100", dest_conf)
+    transfer_part("dest", "source", "domain", "0-100")
 
     assert client_mock.set_missing_host_key_policy.call_count == 1
     assert client_mock.connect.call_count == 1
-    assert client_mock.connect.call_args.args == ("host",)
+    assert client_mock.connect.call_args.args == ("ssh_host",)
     assert client_mock.connect.call_args.kwargs == {
         "port": 22,
-        "username": "user",
-        "password": "pass",
+        "username": "ssh_user",
+        "password": "ssh_pass",
     }
     assert client_mock.exec_command() == (stdin_mock, stdout_mock, stderr_mock)
 
@@ -121,8 +119,7 @@ def test_transfer_part_stderr(ssh_client_mock):
     client_mock = ssh_client_mock().__enter__()
     client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
 
-    dest_conf = {"host": "host", "user": "user", "password": "pass"}
-    transfer_part("dest", "source", "domain", "0-100", dest_conf)
+    transfer_part("dest", "source", "domain", "0-100")
     assert True
 
 
@@ -131,6 +128,5 @@ def test_transfer_part_ssh_exception(ssh_client_mock):
     """SSH Exception occurs when connecting."""
     client_mock = ssh_client_mock().__enter__()
     client_mock.connect.side_effect = SSHException
-    dest_conf = {"host": "host", "user": "user", "password": "pass"}
-    transfer_part("dest", "source", "domain", "0-100", dest_conf)
+    transfer_part("dest", "source", "domain", "0-100")
     assert not client_mock.exec_command.call_count

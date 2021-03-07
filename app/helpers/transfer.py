@@ -5,6 +5,13 @@ from typing import List
 
 from paramiko import AutoAddPolicy, SSHClient, SSHException
 
+from viaa.configuration import ConfigParser
+
+
+configParser = ConfigParser()
+config = configParser.app_cfg
+dest_conf = config["destination"]
+
 
 def calculate_ranges(size_bytes: int, number_parts: int) -> List[str]:
     """Split the filesize up in multiple ranges.
@@ -84,7 +91,6 @@ def transfer_part(
     source_url: str,
     s3_domain: str,
     part_range: str,
-    dest_conf: dict,
 ):
     """Connect to a remote server via SSH and download a part via cURL.
 
@@ -97,8 +103,6 @@ def transfer_part(
         s3_domain: The S3 domain to pass as HTTP header.
         part_range: The range of the part to fetch in format "{x}-{y}"
             with x, y integers and x<=y.
-        dest_conf: Config provided to establish a SSH connection.
-            Expects the keys: "host", "user" and "password".
     """
     # Build the cURL command
     curl_cmd = build_curl_command(

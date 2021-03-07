@@ -9,3 +9,10 @@ app:
       password: !ENV ${RABBITMQ_PASSWORD}
       queue: !ENV ${RABBITMQ_QUEUE}
       prefetch_count: !ENV ${RABBITMQ_PREFETCH_COUNT}
+    source:
+      swarmurl: !ENV ${CASTOR_SWARMURL}
+      domain: !ENV ${CASTOR_SWARMDOMAIN}
+    destination:
+      host: !ENV ${SSH_HOST}
+      user: !ENV ${SSH_USER}
+      password: !ENV ${SSH_PASSWORD}
