@@ -9,6 +9,7 @@ python = "^3.6"
 pika = "^1.2.0"
 paramiko = "^2.7.2"
 viaa-chassis = {version = "^0.2.0rc1", allow-prereleases = true}
+requests = "^2.25.1"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.2"

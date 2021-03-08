@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import os
 import shlex
+import threading
 from typing import List
 
+import requests
 from paramiko import AutoAddPolicy, SSHClient, SSHException
 
 from viaa.configuration import ConfigParser
@@ -11,6 +14,7 @@ from viaa.configuration import ConfigParser
 configParser = ConfigParser()
 config = configParser.app_cfg
 dest_conf = config["destination"]
+NUMBER_PARTS = 4
 
 
 def calculate_ranges(size_bytes: int, number_parts: int) -> List[str]:
@@ -81,6 +85,29 @@ def build_curl_command(
     return shlex.join(command)
 
 
+def build_assemble_command(
+    dest_folder_dirname: str, dest_file_basename: str, parts: int
+) -> str:
+    """Build the assemble command.
+
+    Command consists of changing into directory (cd) and (&&) assembling the
+    parts (cat) into a filename with suffix ".tmp".
+
+    Args:
+        dest_folder_dirname: The dirname of the destination folder.
+        dest_file_basename: The basename of the destination file.
+        parts: The amount of parts.
+
+    Returns:
+        The assemble command shell-escaped.
+    """
+    assemble_command = ["cd", dest_folder_dirname, "&&", "cat"]
+    for i in range(parts):
+        assemble_command.append(calculate_filename_part(dest_file_basename, i))
+    assemble_command.extend([">", f"{dest_file_basename}.tmp"])
+    return shlex.join(assemble_command).replace("'&&'", "&&").replace("'>'", ">")
+
+
 def calculate_filename_part(file: str, idx: int) -> str:
     """Convenience method for calculating the filename of a part."""
     return f"{file}.part{idx}"
@@ -143,6 +170,142 @@ def transfer_part(
                     # TODO: raise exception
                     pass
         except SSHException:
+            # TODO: log error
+            # TODO: raise exception
+            pass
+
+
+def transfer(message: dict):
+    """Transfer a file to a remote server
+
+    First we'll make the tmp dir to transfer the parts to.
+    Then, fetch the size of the file to determine how to split it up in parts.
+    Split up in parts and each part will be separately transferred in its own Thread.
+    When the threads are done, assemble the file.
+
+    Rename/move the assembled file to its correct destination folder.
+    Lastly, remove the parts and tmp folder.
+
+    Args:
+        message: Contains the information of the source file and the destination
+            filename.
+    """
+    domain = message["source"]["domain"]["name"]
+    destination_path = message["destination"]["path"]
+
+    dest_folder_dirname = os.path.dirname(destination_path)
+    dest_file_basename = os.path.basename(destination_path)
+
+    dest_file_tmp_basename = f"{dest_file_basename}.tmp"
+    dest_folder_tmp_basename = f".{dest_file_basename}"
+    dest_folder_tmp_dirname = os.path.join(
+        dest_folder_dirname, dest_folder_tmp_basename
+    )
+
+    bucket = message["source"]["bucket"]["name"]
+    key = message["source"]["object"]["key"]
+    source_url = f"http://{config['source']['swarmurl']}/{bucket}/{key}"
+
+    # Fetch size of the file to transfer
+    size_in_bytes = requests.head(
+        source_url,
+        allow_redirects=True,
+        headers={"host": domain, "Accept-Encoding": "identity"},
+    ).headers.get("content-length", None)
+
+    if not size_in_bytes:
+        # TODO: log error
+        # TODO: raise exception
+        return
+
+    # Make the tmp dir
+    with SSHClient() as remote_client:
+        try:
+            remote_client.set_missing_host_key_policy(AutoAddPolicy())
+            remote_client.connect(
+                dest_conf["host"],
+                port=22,
+                username=dest_conf["user"],
+                password=dest_conf["password"],
+            )
+            sftp = remote_client.open_sftp()
+            try:
+                sftp.mkdir(dest_folder_tmp_dirname)
+            except OSError:
+                # TODO: log error
+                raise
+        except SSHException:
+            # TODO: log error
+            # TODO: raise exception
+            pass
+
+    # Transfer the parts
+    parts = calculate_ranges(int(size_in_bytes), NUMBER_PARTS)
+    threads = []
+    for idx, part in enumerate(parts):
+        thread = threading.Thread(
+            target=transfer_part,
+            args=(
+                os.path.join(
+                    dest_folder_tmp_dirname,
+                    calculate_filename_part(dest_file_basename, idx),
+                ),
+                source_url,
+                domain,
+                part,
+            ),
+        )
+        threads.append(thread)
+        thread.start()
+        # TODO: log debug
+
+    for thread in threads:
+        thread.join()
+
+    # Assemble the parts
+    with SSHClient() as remote_client:
+        try:
+            remote_client.set_missing_host_key_policy(AutoAddPolicy())
+            remote_client.connect(
+                dest_conf["host"],
+                port=22,
+                username=dest_conf["user"],
+                password=dest_conf["password"],
+            )
+            _stdin, stdout, stderr = remote_client.exec_command(
+                build_assemble_command(
+                    dest_folder_tmp_dirname, dest_file_basename, NUMBER_PARTS
+                )
+            )
+            # This waits for assembling to finish?
+            _ = stdout.readlines()
+            _ = stderr.readlines()
+
+            sftp = remote_client.open_sftp()
+            sftp.chdir(dest_folder_tmp_dirname)
+
+            # Check if file has the correct size
+            file_attrs = sftp.stat(dest_file_tmp_basename)
+            if file_attrs.st_size != int(size_in_bytes):
+                # TODO: log error
+                # TODO: raise exception
+                pass
+            # Rename and move file destination folder
+            sftp.rename(
+                os.path.join(dest_folder_tmp_dirname, dest_file_tmp_basename),
+                os.path.join(dest_folder_dirname, dest_file_basename),
+            )
+            # Delete the parts
+            for idx in range(NUMBER_PARTS):
+                try:
+                    sftp.remove(calculate_filename_part(dest_file_basename, idx))
+                except FileNotFoundError:
+                    # Only delete parts that exist
+                    pass
+            # Delete the tmp folder
+            sftp.rmdir(dest_folder_tmp_dirname)
+            # TODO: log info
+        except IOError:
             # TODO: log error
             # TODO: raise exception
             pass
