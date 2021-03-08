@@ -89,6 +89,7 @@ def test_transfer_part(ssh_client_mock, caplog):
 
 
 @patch("app.helpers.transfer.SSHClient")
+@patch("time.sleep", MagicMock())
 def test_transfer_part_status_code(ssh_client_mock, caplog):
     """HTTP error occurs when transferring a part."""
     stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
@@ -104,8 +105,8 @@ def test_transfer_part_status_code(ssh_client_mock, caplog):
     with pytest.raises(TransferPartException):
         transfer_part("dest", "source", "domain", "0-100")
 
-    assert client_mock.set_missing_host_key_policy.call_count == 1
-    assert client_mock.connect.call_count == 1
+    assert client_mock.set_missing_host_key_policy.call_count == 3
+    assert client_mock.connect.call_count == 3
     assert client_mock.connect.call_args.args == ("ssh_host",)
     assert client_mock.connect.call_args.kwargs == {
         "port": 22,
@@ -117,6 +118,7 @@ def test_transfer_part_status_code(ssh_client_mock, caplog):
 
 
 @patch("app.helpers.transfer.SSHClient")
+@patch("time.sleep", MagicMock())
 def test_transfer_part_stderr(ssh_client_mock, caplog):
     """Transferring a part resulting in stderr output."""
     stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
@@ -133,6 +135,7 @@ def test_transfer_part_stderr(ssh_client_mock, caplog):
 
 
 @patch("app.helpers.transfer.SSHClient")
+@patch("time.sleep", MagicMock())
 def test_transfer_part_ssh_exception(ssh_client_mock, caplog):
     """SSH Exception occurs when connecting."""
     client_mock = ssh_client_mock().__enter__()

@@ -7,9 +7,10 @@ from typing import List
 
 import requests
 from paramiko import AutoAddPolicy, SSHClient, SSHException
-
+from retry import retry
 from viaa.configuration import ConfigParser
 from viaa.observability import logging
+
 
 config_parser = ConfigParser()
 config = config_parser.app_cfg
@@ -122,6 +123,7 @@ def calculate_filename_part(file: str, idx: int) -> str:
     return f"{file}.part{idx}"
 
 
+@retry(TransferPartException, tries=3, delay=3, logger=log)
 def transfer_part(
     dest_file_full: str,
     source_url: str,
@@ -192,6 +194,7 @@ def transfer_part(
             raise TransferPartException
 
 
+@retry(TransferException, tries=3, delay=3, logger=log)
 def transfer(message: dict):
     """Transfer a file to a remote server
 
