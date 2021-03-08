@@ -11,6 +11,8 @@ from app.helpers.transfer import (
     calculate_ranges,
     transfer,
     transfer_part,
+    TransferException,
+    TransferPartException,
 )
 
 
@@ -99,8 +101,8 @@ def test_transfer_part_status_code(ssh_client_mock, caplog):
     # Mock exec command
     client_mock = ssh_client_mock().__enter__()
     client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
-
-    transfer_part("dest", "source", "domain", "0-100")
+    with pytest.raises(TransferPartException):
+        transfer_part("dest", "source", "domain", "0-100")
 
     assert client_mock.set_missing_host_key_policy.call_count == 1
     assert client_mock.connect.call_count == 1
@@ -125,8 +127,8 @@ def test_transfer_part_stderr(ssh_client_mock, caplog):
     # Mock exec command
     client_mock = ssh_client_mock().__enter__()
     client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
-
-    transfer_part("dest", "source", "domain", "0-100")
+    with pytest.raises(TransferPartException):
+        transfer_part("dest", "source", "domain", "0-100")
     assert "Error occurred when cURLing part: ['Error']" in caplog.messages
 
 
@@ -135,6 +137,7 @@ def test_transfer_part_ssh_exception(ssh_client_mock, caplog):
     """SSH Exception occurs when connecting."""
     client_mock = ssh_client_mock().__enter__()
     client_mock.connect.side_effect = SSHException("Connection error")
-    transfer_part("dest", "source", "domain", "0-100")
+    with pytest.raises(TransferPartException):
+        transfer_part("dest", "source", "domain", "0-100")
     assert not client_mock.exec_command.call_count
     assert "SSH Error occurred when cURLing part: Connection error" in caplog.messages

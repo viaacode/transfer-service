@@ -18,6 +18,14 @@ dest_conf = config["destination"]
 NUMBER_PARTS = 4
 
 
+class TransferPartException(Exception):
+    pass
+
+
+class TransferException(Exception):
+    pass
+
+
 def calculate_ranges(size_bytes: int, number_parts: int) -> List[str]:
     """Split the filesize up in multiple ranges.
 
@@ -158,8 +166,7 @@ def transfer_part(
                     f"Error occurred when cURLing part: {err}",
                     destination=dest_file_full,
                 )
-                # TODO: raise exception
-                return
+                raise TransferPartException
             if out:
                 try:
                     results = out[0].split(",")
@@ -169,20 +176,20 @@ def transfer_part(
                             f"Error occurred when cURLing part with status code: {status_code}",
                             destination=dest_file_full,
                         )
-                        # TODO: raise exception
+                        raise TransferPartException
                     log.info("Successfully cURLed part", destination=dest_file_full)
                 except IndexError as i_e:
                     log.error(
                         f"Error occurred cURLing part: {i_e}",
                         destination=dest_file_full,
                     )
-                    # TODO: raise exception
+                    raise TransferPartException
         except SSHException as ssh_e:
             log.error(
                 f"SSH Error occurred when cURLing part: {ssh_e}",
                 destination=dest_file_full,
             )
-            # TODO: raise exception
+            raise TransferPartException
 
 
 def transfer(message: dict):
@@ -227,7 +234,7 @@ def transfer(message: dict):
 
     if not size_in_bytes:
         log.error("Failed to get size of file on Castor", source_url=source_url)
-        # TODO: raise exception
+        raise TransferException
 
     # Make the tmp dir
     with SSHClient() as remote_client:
@@ -247,13 +254,13 @@ def transfer(message: dict):
                     f"Error occurred when creating tmp folder: {os_e}",
                     tmp_folder=dest_folder_tmp_dirname,
                 )
-                raise
+                raise TransferException
         except SSHException as ssh_e:
             log.error(
                 f"SSH Error occurred creating tmp folder: {ssh_e}",
                 tmp_folder=dest_folder_tmp_dirname,
             )
-            # TODO: raise exception
+            raise TransferException
 
     # Transfer the parts
     parts = calculate_ranges(int(size_in_bytes), NUMBER_PARTS)
@@ -308,7 +315,7 @@ def transfer(message: dict):
                     source_url=source_url,
                     destination_basename=dest_file_tmp_basename,
                 )
-                # TODO: raise exception
+                raise TransferException
             # Rename and move file destination folder
             sftp.rename(
                 os.path.join(dest_folder_tmp_dirname, dest_file_tmp_basename),
@@ -329,4 +336,4 @@ def transfer(message: dict):
                 f"Error occurred when assembling parts: {io_e}",
                 destination=destination_path,
             )
-            # TODO: raise exception
+            raise TransferException
