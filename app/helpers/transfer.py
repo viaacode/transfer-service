@@ -9,10 +9,11 @@ import requests
 from paramiko import AutoAddPolicy, SSHClient, SSHException
 
 from viaa.configuration import ConfigParser
+from viaa.observability import logging
 
-
-configParser = ConfigParser()
-config = configParser.app_cfg
+config_parser = ConfigParser()
+config = config_parser.app_cfg
+log = logging.get_logger(__name__, config=config_parser)
 dest_conf = config["destination"]
 NUMBER_PARTS = 4
 
@@ -153,7 +154,10 @@ def transfer_part(
             out = stdout.readlines()
             err = stderr.readlines()
             if err:
-                # TODO: log error
+                log.error(
+                    f"Error occurred when cURLing part: {err}",
+                    destination=dest_file_full,
+                )
                 # TODO: raise exception
                 return
             if out:
@@ -161,18 +165,24 @@ def transfer_part(
                     results = out[0].split(",")
                     status_code = results[1]
                     if int(status_code) >= 400:
-                        # TODO: log error
+                        log.error(
+                            f"Error occurred when cURLing part with status code: {status_code}",
+                            destination=dest_file_full,
+                        )
                         # TODO: raise exception
-                        pass
-                    # TODO: log success
-                except IndexError:
-                    # TODO: log error
+                    log.info("Successfully cURLed part", destination=dest_file_full)
+                except IndexError as i_e:
+                    log.error(
+                        f"Error occurred cURLing part: {i_e}",
+                        destination=dest_file_full,
+                    )
                     # TODO: raise exception
-                    pass
-        except SSHException:
-            # TODO: log error
+        except SSHException as ssh_e:
+            log.error(
+                f"SSH Error occurred when cURLing part: {ssh_e}",
+                destination=dest_file_full,
+            )
             # TODO: raise exception
-            pass
 
 
 def transfer(message: dict):
@@ -206,6 +216,8 @@ def transfer(message: dict):
     key = message["source"]["object"]["key"]
     source_url = f"http://{config['source']['swarmurl']}/{bucket}/{key}"
 
+    log.info(f"Start transferring of file: {source_url}")
+
     # Fetch size of the file to transfer
     size_in_bytes = requests.head(
         source_url,
@@ -214,9 +226,8 @@ def transfer(message: dict):
     ).headers.get("content-length", None)
 
     if not size_in_bytes:
-        # TODO: log error
+        log.error("Failed to get size of file on Castor", source_url=source_url)
         # TODO: raise exception
-        return
 
     # Make the tmp dir
     with SSHClient() as remote_client:
@@ -231,13 +242,18 @@ def transfer(message: dict):
             sftp = remote_client.open_sftp()
             try:
                 sftp.mkdir(dest_folder_tmp_dirname)
-            except OSError:
-                # TODO: log error
+            except OSError as os_e:
+                log.error(
+                    f"Error occurred when creating tmp folder: {os_e}",
+                    tmp_folder=dest_folder_tmp_dirname,
+                )
                 raise
-        except SSHException:
-            # TODO: log error
+        except SSHException as ssh_e:
+            log.error(
+                f"SSH Error occurred creating tmp folder: {ssh_e}",
+                tmp_folder=dest_folder_tmp_dirname,
+            )
             # TODO: raise exception
-            pass
 
     # Transfer the parts
     parts = calculate_ranges(int(size_in_bytes), NUMBER_PARTS)
@@ -257,7 +273,7 @@ def transfer(message: dict):
         )
         threads.append(thread)
         thread.start()
-        # TODO: log debug
+        log.debug(f"Thread started for {destination_path}")
 
     for thread in threads:
         thread.join()
@@ -287,9 +303,12 @@ def transfer(message: dict):
             # Check if file has the correct size
             file_attrs = sftp.stat(dest_file_tmp_basename)
             if file_attrs.st_size != int(size_in_bytes):
-                # TODO: log error
+                log.error(
+                    f"Size of assembled file: {file_attrs.st_size}, expected size: {size_in_bytes}",
+                    source_url=source_url,
+                    destination_basename=dest_file_tmp_basename,
+                )
                 # TODO: raise exception
-                pass
             # Rename and move file destination folder
             sftp.rename(
                 os.path.join(dest_folder_tmp_dirname, dest_file_tmp_basename),
@@ -304,8 +323,10 @@ def transfer(message: dict):
                     pass
             # Delete the tmp folder
             sftp.rmdir(dest_folder_tmp_dirname)
-            # TODO: log info
-        except IOError:
-            # TODO: log error
+            log.info("File successfully transferred", destination=destination_path)
+        except IOError as io_e:
+            log.error(
+                f"Error occurred when assembling parts: {io_e}",
+                destination=destination_path,
+            )
             # TODO: raise exception
-            pass

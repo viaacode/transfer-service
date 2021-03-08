@@ -9,6 +9,7 @@ from app.helpers.transfer import (
     build_curl_command,
     calculate_filename_part,
     calculate_ranges,
+    transfer,
     transfer_part,
 )
 
@@ -58,12 +59,14 @@ def test_calculate_filename_part():
 
 
 @patch("app.helpers.transfer.SSHClient")
-def test_transfer_part(ssh_client_mock):
+def test_transfer_part(ssh_client_mock, caplog):
     """Successful transfer of a part."""
     stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
     # Mock the stdout result of the cURL command.
     stdout_result = ["1000,200,1000,url,5"]
     stdout_mock.readlines.return_value = stdout_result
+    # Mock stderr to be empty
+    stderr_mock.readlines.return_value = []
 
     # Mock exec command
     client_mock = ssh_client_mock().__enter__()
@@ -80,15 +83,18 @@ def test_transfer_part(ssh_client_mock):
         "password": "ssh_pass",
     }
     assert client_mock.exec_command() == (stdin_mock, stdout_mock, stderr_mock)
+    assert "Successfully cURLed part" in caplog.messages
 
 
 @patch("app.helpers.transfer.SSHClient")
-def test_transfer_part_status_code(ssh_client_mock):
+def test_transfer_part_status_code(ssh_client_mock, caplog):
     """HTTP error occurs when transferring a part."""
     stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
     # Mock the stdout result of the cURL command.
     stdout_result = ["1000,416,1000,url,5"]
     stdout_mock.readlines.return_value = stdout_result
+    # Mock stderr to be empty
+    stderr_mock.readlines.return_value = []
 
     # Mock exec command
     client_mock = ssh_client_mock().__enter__()
@@ -105,10 +111,11 @@ def test_transfer_part_status_code(ssh_client_mock):
         "password": "ssh_pass",
     }
     assert client_mock.exec_command() == (stdin_mock, stdout_mock, stderr_mock)
+    assert "Error occurred when cURLing part with status code: 416" in caplog.messages
 
 
 @patch("app.helpers.transfer.SSHClient")
-def test_transfer_part_stderr(ssh_client_mock):
+def test_transfer_part_stderr(ssh_client_mock, caplog):
     """Transferring a part resulting in stderr output."""
     stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
     # Mock the stderr result of the cURL command.
@@ -120,13 +127,14 @@ def test_transfer_part_stderr(ssh_client_mock):
     client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
 
     transfer_part("dest", "source", "domain", "0-100")
-    assert True
+    assert "Error occurred when cURLing part: ['Error']" in caplog.messages
 
 
 @patch("app.helpers.transfer.SSHClient")
-def test_transfer_part_ssh_exception(ssh_client_mock):
+def test_transfer_part_ssh_exception(ssh_client_mock, caplog):
     """SSH Exception occurs when connecting."""
     client_mock = ssh_client_mock().__enter__()
-    client_mock.connect.side_effect = SSHException
+    client_mock.connect.side_effect = SSHException("Connection error")
     transfer_part("dest", "source", "domain", "0-100")
     assert not client_mock.exec_command.call_count
+    assert "SSH Error occurred when cURLing part: Connection error" in caplog.messages
