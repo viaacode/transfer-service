@@ -27,7 +27,7 @@ class EventListener:
         self.log.debug(f"Incoming message: {body}")
         try:
             transfer(json.loads(body))
-        except (TransferPartException, TransferException):
+        except (TransferPartException, TransferException, OSError):
             self.log.error("Transfer failed")
             channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
             return

@@ -239,7 +239,7 @@ def transfer(message: dict):
         log.error("Failed to get size of file on Castor", source_url=source_url)
         raise TransferException
 
-    # Make the tmp dir
+    # Check if file doesn't exist yet and make the tmp dir
     with SSHClient() as remote_client:
         try:
             remote_client.set_missing_host_key_policy(AutoAddPolicy())
@@ -250,6 +250,18 @@ def transfer(message: dict):
                 password=dest_conf["password"],
             )
             sftp = remote_client.open_sftp()
+
+            # Check if the file does not exist yet
+            try:
+                sftp.stat(destination_path)
+            except FileNotFoundError:
+                # Continue
+                pass
+            else:
+                # If the file exists stop.
+                log.error("File already exists", destination=destination_path)
+                raise OSError
+
             try:
                 sftp.mkdir(dest_folder_tmp_dirname)
             except OSError as os_e:
@@ -334,9 +346,9 @@ def transfer(message: dict):
             # Delete the tmp folder
             sftp.rmdir(dest_folder_tmp_dirname)
             log.info("File successfully transferred", destination=destination_path)
-        except IOError as io_e:
+        except OSError as os_e:
             log.error(
-                f"Error occurred when assembling parts: {io_e}",
+                f"Error occurred when assembling parts: {os_e}",
                 destination=destination_path,
             )
             raise TransferException
