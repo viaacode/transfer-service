@@ -339,8 +339,11 @@ def transfer(message: dict):
             # Rename and move file destination folder
             sftp.rename(
                 os.path.join(dest_folder_tmp_dirname, dest_file_tmp_basename),
-                os.path.join(dest_folder_dirname, dest_file_basename),
+                destination_path,
             )
+            # Touch the file so MH picks it up
+            sftp.utime(destination_path, None)
+
             # Delete the parts
             for idx in range(NUMBER_PARTS):
                 try:
