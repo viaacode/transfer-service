@@ -12,7 +12,7 @@ import pika
 class RabbitClient:
     def __init__(self):
         configParser = ConfigParser()
-        self.log = logging.get_logger(__name__, config=configParser)
+        self.logger = logging.get_logger(__name__, config=configParser)
         self.rabbitConfig = configParser.app_cfg["rabbitmq"]
 
         self.credentials = pika.PlainCredentials(
