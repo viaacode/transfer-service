@@ -342,8 +342,8 @@ def transfer(message: dict):
                 destination_path,
             )
             # Touch the file so MH picks it up
-            sftp.utime(destination_path, None)
-
+            # Explictly use a SSH command as `SFTP utime` didn't work
+            remote_client.exec_command(f"touch '{destination_path}'")
             # Delete the parts
             for idx in range(NUMBER_PARTS):
                 try:
