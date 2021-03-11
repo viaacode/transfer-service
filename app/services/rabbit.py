@@ -11,27 +11,27 @@ import pika
 
 class RabbitClient:
     def __init__(self):
-        configParser = ConfigParser()
-        self.logger = logging.get_logger(__name__, config=configParser)
-        self.rabbitConfig = configParser.app_cfg["rabbitmq"]
+        config_parser = ConfigParser()
+        self.logger = logging.get_logger(__name__, config=config_parser)
+        self.rabbit_config = config_parser.app_cfg["rabbitmq"]
 
         self.credentials = pika.PlainCredentials(
-            self.rabbitConfig["username"], self.rabbitConfig["password"]
+            self.rabbit_config["username"], self.rabbit_config["password"]
         )
 
         self.connection = pika.BlockingConnection(
             pika.ConnectionParameters(
-                host=self.rabbitConfig["host"],
-                port=self.rabbitConfig["port"],
+                host=self.rabbit_config["host"],
+                port=self.rabbit_config["port"],
                 credentials=self.credentials,
             )
         )
 
-        self.prefetch_count = int(self.rabbitConfig["prefetch_count"])
+        self.prefetch_count = int(self.rabbit_config["prefetch_count"])
 
     def listen(self, on_message_callback, queue=None):
         if queue is None:
-            queue = self.rabbitConfig["queue"]
+            queue = self.rabbit_config["queue"]
 
         try:
             while True:
