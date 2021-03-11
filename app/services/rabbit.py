@@ -27,7 +27,6 @@ class RabbitClient:
             )
         )
 
-        self.channel = self.connection.channel()
         self.prefetch_count = int(self.rabbitConfig["prefetch_count"])
 
     def listen(self, on_message_callback, queue=None):
@@ -62,6 +61,6 @@ class RabbitClient:
                     time.sleep(3)
 
         except KeyboardInterrupt:
-            self.channel.stop_consuming()
+            channel.stop_consuming()
 
         self.connection.close()
