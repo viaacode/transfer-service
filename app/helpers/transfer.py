@@ -265,11 +265,16 @@ def transfer(message: dict):
             try:
                 sftp.mkdir(dest_folder_tmp_dirname)
             except OSError as os_e:
-                log.error(
-                    f"Error occurred when creating tmp folder: {os_e}",
-                    tmp_folder=dest_folder_tmp_dirname,
-                )
-                raise TransferException
+                # If the folder already exists, just continue
+                try:
+                    sftp.stat(dest_folder_tmp_dirname)
+                except FileNotFoundError:
+                    log.error(
+                        f"Error occurred when creating tmp folder: {os_e}",
+                        tmp_folder=dest_folder_tmp_dirname,
+                    )
+                    raise os_e
+
         except SSHException as ssh_e:
             log.error(
                 f"SSH Error occurred creating tmp folder: {ssh_e}",
