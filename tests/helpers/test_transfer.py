@@ -46,9 +46,7 @@ def test_build_curl_command():
     src = "source file"
     domain = "S3 domain"
     r = "0-100"
-    w_params = (
-        "%{speed_download},%{http_code},%{size_download},%{url_effective},%{time_total}"
-    )
+    w_params = "%{http_code},time: %{time_total}s,size: %{size_download} bytes,speed: %{speed_download}b/s"
     curl_command = build_curl_command(dest, src, domain, r)
     assert (
         curl_command
@@ -64,8 +62,8 @@ def test_calculate_filename_part():
 def test_transfer_part(ssh_client_mock, caplog):
     """Successful transfer of a part."""
     stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
-    # Mock the stdout result of the cURL command.
-    stdout_result = ["1000,200,1000,url,5"]
+    # Mock the stdout result of the cURL command
+    stdout_result = ["206,time: 5s,size: 1000 bytes,speed: 200b/s"]
     stdout_mock.readlines.return_value = stdout_result
     # Mock stderr to be empty
     stderr_mock.readlines.return_value = []
@@ -93,8 +91,8 @@ def test_transfer_part(ssh_client_mock, caplog):
 def test_transfer_part_status_code(ssh_client_mock, caplog):
     """HTTP error occurs when transferring a part."""
     stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
-    # Mock the stdout result of the cURL command.
-    stdout_result = ["1000,416,1000,url,5"]
+    # Mock the stdout result of the cURL command
+    stdout_result = ["416,time: 5s,size: 1000 bytes,speed: 200b/s"]
     stdout_mock.readlines.return_value = stdout_result
     # Mock stderr to be empty
     stderr_mock.readlines.return_value = []
@@ -122,7 +120,7 @@ def test_transfer_part_status_code(ssh_client_mock, caplog):
 def test_transfer_part_stderr(ssh_client_mock, caplog):
     """Transferring a part resulting in stderr output."""
     stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
-    # Mock the stderr result of the cURL command.
+    # Mock the stderr result of the cURL command
     stderr_result = ["Error"]
     stderr_mock.readlines.return_value = stderr_result
 

@@ -78,7 +78,7 @@ def build_curl_command(
     command = [
         "curl",
         "-w",
-        "%{speed_download},%{http_code},%{size_download},%{url_effective},%{time_total}",
+        "%{http_code},time: %{time_total}s,size: %{size_download} bytes,speed: %{speed_download}b/s",
         "-L",
         "-H",
         f"host: {s3_domain}",
@@ -158,7 +158,7 @@ def transfer_part(
                 username=dest_conf["user"],
                 password=dest_conf["password"],
             )
-            # Execute the cURL command and read examine results
+            # Execute the cURL command and examine results
             _stdin, stdout, stderr = remote_client.exec_command(curl_cmd)
             results = []
             out = stdout.readlines()
@@ -172,14 +172,18 @@ def transfer_part(
             if out:
                 try:
                     results = out[0].split(",")
-                    status_code = results[1]
+                    status_code = results[0]
                     if int(status_code) >= 400:
                         log.error(
                             f"Error occurred when cURLing part with status code: {status_code}",
                             destination=dest_file_full,
                         )
                         raise TransferPartException
-                    log.info("Successfully cURLed part", destination=dest_file_full)
+                    log.info(
+                        "Successfully cURLed part",
+                        destination=dest_file_full,
+                        results=results,
+                    )
                 except IndexError as i_e:
                     log.error(
                         f"Error occurred cURLing part: {i_e}",
@@ -262,6 +266,7 @@ def transfer(message: dict):
                 log.error("File already exists", destination=destination_path)
                 raise OSError
 
+            # Create tmp folder if it doesn't exist yet
             try:
                 sftp.mkdir(dest_folder_tmp_dirname)
             except OSError as os_e:
@@ -286,13 +291,14 @@ def transfer(message: dict):
     parts = calculate_ranges(int(size_in_bytes), NUMBER_PARTS)
     threads = []
     for idx, part in enumerate(parts):
+        dest_file_part_full = os.path.join(
+            dest_folder_tmp_dirname,
+            calculate_filename_part(dest_file_basename, idx),
+        )
         thread = threading.Thread(
             target=transfer_part,
             args=(
-                os.path.join(
-                    dest_folder_tmp_dirname,
-                    calculate_filename_part(dest_file_basename, idx),
-                ),
+                dest_file_part_full,
                 source_url,
                 domain,
                 part,
@@ -300,12 +306,13 @@ def transfer(message: dict):
         )
         threads.append(thread)
         thread.start()
-        log.debug(f"Thread started for {destination_path}")
+        log.debug(f"Thread started for: {dest_file_part_full}")
 
     for thread in threads:
         thread.join()
 
     # Assemble the parts
+    log.info("Start assembling the parts", destination=destination_path)
     with SSHClient() as remote_client:
         try:
             remote_client.set_missing_host_key_policy(AutoAddPolicy())
