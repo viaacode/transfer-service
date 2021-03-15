@@ -3,7 +3,7 @@ VERSION = ${shell (git describe --tags || echo latest)}
 .ONESHELL:
 SHELL = /bin/bash
 
-.PHONY: all login build test lint push tag-int deploy-int test-int tag-qas deploy-qas test-qas tag-prd deploy-prd approved post-clean
+.PHONY: all login build test lint push deploy-int test-int deploy-qas test-qas deploy-prd approved post-clean
 
 NAMESPACE = s3-components
 OC_PROJECT = ${NAMESPACE}
@@ -29,20 +29,16 @@ lint:
 push: 	login
 	docker push ${REGISTRY}/${IMAGE_NAME}:${VERSION}
 
-tag-int:
-	oc tag ${IMAGE_NAME}:${VERSION} ${IMAGE_NAME}:int
 deploy-int:
+	bash ./openshift/wait4rollout.sh int ${APP_NAME} ${IMAGE_NAME} ${VERSION}
 test-int:
 
-tag-qas:
-	oc tag ${IMAGE_NAME}:${VERSION} ${IMAGE_NAME}:qas
 deploy-qas:
-
+	bash ./openshift/wait4rollout.sh qas ${APP_NAME} ${IMAGE_NAME} ${VERSION}
 test-qas:
 
-tag-prd:
-	oc tag ${IMAGE_NAME}:${VERSION} ${IMAGE_NAME}:prd
 deploy-prd:
+	bash ./openshift/wait4rollout.sh prd ${APP_NAME} ${IMAGE_NAME} ${VERSION}
 
 approved:
 	echo "Approved"

@@ -29,12 +29,7 @@ pipeline {
                 sh 'make -f ./openshift/Makefile push'
             }
         }
-        stage('Tag INT') {
-            steps {
-                sh 'make -f ./openshift/Makefile tag-int'
-            }
-        }
-        stage('Deploy INT') {
+        stage('Tag and deploy INT') {
             steps {
                 sh 'make -f ./openshift/Makefile deploy-int'
             }
@@ -44,12 +39,7 @@ pipeline {
                 sh 'make -f ./openshift/Makefile test-int'
             }
         }
-        stage('Tag QAS') {
-            steps {
-                sh 'make -f ./openshift/Makefile tag-qas'
-            }
-        }
-        stage('Deploy qas') {
+        stage('Tag and deploy qas') {
             steps {
                 sh 'make -f ./openshift/Makefile deploy-qas'
             }
@@ -65,12 +55,7 @@ pipeline {
                 sh 'make -f ./openshift/Makefile approved'
             }
         }
-        stage('Tag PRD') {
-            steps {
-                sh 'make -f ./openshift/Makefile tag-prd'
-            }
-        }
-        stage('Deploy PRD') {
+        stage('Tag and deploy PRD') {
             steps {
                 sh 'make -f ./openshift/Makefile deploy-prd'
             }
