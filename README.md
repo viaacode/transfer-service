@@ -17,6 +17,15 @@ the file will be assembled into the destination file.
 - Access to the [meemoo PyPi](http://do-prd-mvn-01.do.viaa.be:8081)
 - Poetry
 
+## Diagrams
+
+<details>
+  <summary>Sequence diagram (click to expand)</summary>
+
+  ![S3 Transfer Service](http://www.plantuml.com/plantuml/proxy?src=https://raw.githubusercontent.com/viaacode/s3-transfer-service/main/docs/s3-t-s_sequence-diagram.plantuml&fmt=svg)
+
+</details>
+
 ## Usage
 
 1. Clone this repository with:
