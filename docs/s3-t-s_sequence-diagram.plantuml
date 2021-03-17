@@ -1,0 +1,31 @@
+@startuml s3-transfer-service
+
+autonumber
+
+title S3 Transfer Service
+
+participant rabbit as "RabbitMQ"
+participant sts as "s3-transfer-service"
+participant tra as "Remote Server"
+participant os as "Object Store"
+
+activate sts
+sts -> rabbit: Listen to queue
+loop
+    rabbit -> sts: Transfer message request
+    sts -> tra: Connect via SSH
+    alt file does not yet exist
+        tra -> tra: Create tmp folder if not yet exists
+        loop for each part
+	    tra -> os: cURL part to tmp folder
+	    os -> tra: send part to tmp folder
+        end
+        tra -> tra: Assemble parts to tmp file in tmp folder
+        tra -> tra: Rename/move tmp file to destination file
+        tra -> tra: Touch the destination file
+        tra -> tra: Remove parts and the tmp folder
+    else file does already exists
+    end
+end
+
+@enduml
