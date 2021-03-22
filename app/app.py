@@ -80,6 +80,13 @@ class EventListener:
         thread.start()
         self.threads.append(thread)
 
+    def exit_gracefully(self, signum, frame):
+        """Stop consuming queue but finish current tasks/messages. """
+        self.log.info(
+            "Received SIGTERM. Waiting for last transfer to finish and then stops."
+        )
+        self.rabbit_client.stop_consuming()
+
     def start(self):
         # Start listening for incoming messages
         self.log.info("Start to listen for incoming transfer messages...")
@@ -87,3 +94,7 @@ class EventListener:
         # Wait for remaining threads to join after consuming.
         for thread in self.threads:
             thread.join()
+        # Ensure callback (n)acks are send
+        self.rabbit_client.connection.process_data_events()
+        # Close the RabbitMQ connection
+        self.rabbit_client.connection.close()

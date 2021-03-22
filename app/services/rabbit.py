@@ -3,14 +3,15 @@
 
 import time
 
+import pika
+
 from viaa.configuration import ConfigParser
 from viaa.observability import logging
-
-import pika
 
 
 class RabbitClient:
     def __init__(self):
+        self.stopped = False
         config_parser = ConfigParser()
         self.logger = logging.get_logger(__name__, config=config_parser)
         self.rabbit_config = config_parser.app_cfg["rabbitmq"]
@@ -34,18 +35,18 @@ class RabbitClient:
             queue = self.rabbit_config["queue"]
 
         try:
-            while True:
+            while not self.stopped:
                 try:
-                    channel = self.connection.channel()
+                    self.channel = self.connection.channel()
 
-                    channel.basic_qos(
+                    self.channel.basic_qos(
                         prefetch_count=self.prefetch_count, global_qos=False
                     )
-                    channel.basic_consume(
+                    self.channel.basic_consume(
                         queue=queue, on_message_callback=on_message_callback
                     )
 
-                    channel.start_consuming()
+                    self.channel.start_consuming()
                 except pika.exceptions.StreamLostError:
                     self.logger.warning("RMQBridge lost connection, reconnecting...")
                     time.sleep(3)
@@ -59,8 +60,9 @@ class RabbitClient:
                         "RMQBridge heartbeat timed out, reconnecting..."
                     )
                     time.sleep(3)
-
         except KeyboardInterrupt:
-            channel.stop_consuming()
+            self.stop_consuming()
 
-        self.connection.close()
+    def stop_consuming(self):
+        self.stopped = True
+        self.channel.stop_consuming()
