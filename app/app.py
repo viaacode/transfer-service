@@ -42,6 +42,7 @@ class EventListener:
             pass
 
     def do_work(self, channel, delivery_tag, body):
+        # Parse and validate the message
         try:
             message = parse_validate_json(body)
         except InvalidMessageException as ime:
@@ -50,6 +51,7 @@ class EventListener:
             self.rabbit_client.connection.add_callback_threadsafe(cb_nack)
             return
 
+        # Start the transfer
         try:
             transfer(message)
         except (TransferPartException, TransferException, OSError):

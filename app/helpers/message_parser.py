@@ -10,7 +10,7 @@ class InvalidMessageException(Exception):
 
 
 def _validate_json(message: dict):
-    """Validate if the message contains all the needed information
+    """Validate if the message contains all the needed information.
 
     Args:
         message: The JSON message.
@@ -30,7 +30,7 @@ def _validate_json(message: dict):
 
 
 def parse_validate_json(message: bytes) -> dict:
-    """Parse and validate the JSON message
+    """Parse and validate the JSON message.
 
     Args:
         message: The JSON message.
@@ -40,7 +40,7 @@ def parse_validate_json(message: bytes) -> dict:
 
     Raises:
         InvalidMessageException: If the message is not valid JSON
-            or if the JSON misses mandatory keys
+            or if the JSON misses mandatory keys.
     """
     try:
         json_data = json.loads(message)
