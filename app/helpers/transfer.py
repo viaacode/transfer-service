@@ -218,6 +218,33 @@ class Transfer:
                 )
                 raise TransferPartException
 
+    def _fetch_size(self) -> int:
+        """Fetch the size of the file on Castor.
+
+        The size is in the "content-length" response header.
+
+        Returns:
+            The size of the file in bytes.
+
+        Raises:
+            TransferException: If it was not possible to get the size of the file,
+                e.g. a 404.
+        """
+
+        size_in_bytes = requests.head(
+            self.source_url,
+            allow_redirects=True,
+            headers={"host": self.domain, "Accept-Encoding": "identity"},
+        ).headers.get("content-length", None)
+
+        if not size_in_bytes:
+            log.error(
+                "Failed to get size of file on Castor", source_url=self.source_url
+            )
+            raise TransferException
+
+        return size_in_bytes
+
     @retry(TransferException, tries=3, delay=3, logger=log)
     def transfer(self):
         """Transfer a file to a remote server
@@ -234,17 +261,7 @@ class Transfer:
         log.info(f"Start transferring of file: {self.source_url}")
 
         # Fetch size of the file to transfer
-        self.size_in_bytes = requests.head(
-            self.source_url,
-            allow_redirects=True,
-            headers={"host": self.domain, "Accept-Encoding": "identity"},
-        ).headers.get("content-length", None)
-
-        if not self.size_in_bytes:
-            log.error(
-                "Failed to get size of file on Castor", source_url=self.source_url
-            )
-            raise TransferException
+        self.size_in_bytes = self._fetch_size()
 
         # Check if file doesn't exist yet and make the tmp dir
         with SSHClient() as remote_client:

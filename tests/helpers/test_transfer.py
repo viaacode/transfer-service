@@ -165,3 +165,23 @@ class TestTransfer:
         assert (
             "SSH Error occurred when cURLing part: Connection error" in caplog.messages
         )
+
+    @patch("requests.head")
+    def test_fetch_size(self, head_mock, transfer):
+        """Response contains a "content-length" response header with the size."""
+        # Mock return size of file
+        head_mock().headers = {"content-length": 1000}
+
+        size = transfer._fetch_size()
+        assert size == 1000
+
+    @patch("requests.head")
+    def test_fetch_size_error(self, head_mock, transfer, caplog):
+        """No "content-length" response header."""
+        # Mock return size of file
+        head_mock().headers = {}
+        with pytest.raises(TransferException):
+            transfer._fetch_size()
+        log_record = caplog.records[0]
+        assert log_record.level == "error"
+        assert log_record.message == "Failed to get size of file on Castor"
