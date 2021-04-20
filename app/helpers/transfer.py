@@ -302,6 +302,35 @@ class Transfer:
                 )
                 raise TransferException
 
+    def _transfer_parts(self):
+        """Transfer the file in separate parts.
+
+        Split up a file in a certain amount of parts. Transfer each part simultaneously
+        in a separate thread. Wait for the threads to finish, thus wait for all the
+        parts to finish transferring.
+        """
+        parts = calculate_ranges(int(self.size_in_bytes), NUMBER_PARTS)
+        threads = []
+        for idx, part in enumerate(parts):
+            dest_file_part_full = os.path.join(
+                self.dest_folder_tmp_dirname,
+                calculate_filename_part(self.dest_file_basename, idx),
+            )
+            thread = threading.Thread(
+                target=self._transfer_part,
+                args=(
+                    dest_file_part_full,
+                    part,
+                ),
+            )
+            threads.append(thread)
+            thread.start()
+            log.debug(f"Thread started for: {dest_file_part_full}")
+
+        # Wait for the parts to finish transferring
+        for thread in threads:
+            thread.join()
+
     @retry(TransferException, tries=3, delay=3, logger=log)
     def transfer(self):
         """Transfer a file to a remote server
@@ -324,26 +353,7 @@ class Transfer:
         self._prepare_target_transfer()
 
         # Transfer the parts
-        parts = calculate_ranges(int(self.size_in_bytes), NUMBER_PARTS)
-        threads = []
-        for idx, part in enumerate(parts):
-            dest_file_part_full = os.path.join(
-                self.dest_folder_tmp_dirname,
-                calculate_filename_part(self.dest_file_basename, idx),
-            )
-            thread = threading.Thread(
-                target=self._transfer_part,
-                args=(
-                    dest_file_part_full,
-                    part,
-                ),
-            )
-            threads.append(thread)
-            thread.start()
-            log.debug(f"Thread started for: {dest_file_part_full}")
-
-        for thread in threads:
-            thread.join()
+        self._transfer_parts()
 
         # Assemble the parts
         log.info("Start assembling the parts", destination=self.destination_path)

@@ -255,3 +255,37 @@ class TestTransfer:
 
         assert sftp_mock.stat.call_count == 2
         sftp_mock.mkdir.assert_called_once_with("/s3-transfer-test/.file.mxf")
+
+    @patch("app.helpers.transfer.Transfer._transfer_part")
+    @patch("app.helpers.transfer.calculate_ranges", return_value=["0-1", "1-2"])
+    def test_transfer_parts(
+        self, calculate_ranges_mock, transfer_part_mock, transfer, caplog
+    ):
+        """Transfer parts successfully."""
+        transfer._transfer_parts()
+
+        log_records = caplog.records
+        assert len(log_records) == 2
+        for log_record in log_records:
+            assert log_record.level == "debug"
+
+        assert (
+            "Thread started for: /s3-transfer-test/.file.mxf/file.mxf.part0"
+            in caplog.messages
+        )
+        assert (
+            "Thread started for: /s3-transfer-test/.file.mxf/file.mxf.part1"
+            in caplog.messages
+        )
+
+        assert transfer_part_mock.call_count == 2
+        call_args = [call_args.args for call_args in transfer_part_mock.call_args_list]
+        assert (
+            "/s3-transfer-test/.file.mxf/file.mxf.part1",
+            "1-2",
+        ) in call_args
+
+        assert (
+            "/s3-transfer-test/.file.mxf/file.mxf.part0",
+            "0-1",
+        ) in call_args
