@@ -185,3 +185,73 @@ class TestTransfer:
         log_record = caplog.records[0]
         assert log_record.level == "error"
         assert log_record.message == "Failed to get size of file on Castor"
+
+    @patch("app.helpers.transfer.SSHClient")
+    def test_prepare_target_transfer(self, ssh_client_mock, transfer):
+        """File does not exist and folder is created"""
+        client_mock = ssh_client_mock().__enter__()
+        client_mock.open_sftp().stat.side_effect = FileNotFoundError
+
+        transfer._prepare_target_transfer()
+
+        sftp_mock = client_mock.open_sftp()
+
+        sftp_mock.stat.assert_called_once_with("/s3-transfer-test/file.mxf")
+        sftp_mock.mkdir.assert_called_once_with("/s3-transfer-test/.file.mxf")
+
+    @patch("app.helpers.transfer.SSHClient")
+    def test__prepare_target_transfer_file_exists(
+        self, ssh_client_mock, transfer, caplog
+    ):
+        """File already exist."""
+        client_mock = ssh_client_mock().__enter__()
+
+        with pytest.raises(OSError):
+            transfer._prepare_target_transfer()
+
+        sftp_mock = client_mock.open_sftp()
+        log_record = caplog.records[0]
+        assert log_record.level == "error"
+        assert log_record.message == "File already exists"
+        assert log_record.destination == "/s3-transfer-test/file.mxf"
+
+        sftp_mock.stat.assert_called_once_with("/s3-transfer-test/file.mxf")
+        sftp_mock.mkdir.assert_not_called()
+
+    @patch("app.helpers.transfer.SSHClient")
+    def test_prepare_target_transfer_folder_exists(self, ssh_client_mock, transfer):
+        """File does not exist and tmp folder already exists."""
+        client_mock = ssh_client_mock().__enter__()
+        # File not found but folder is found.
+        client_mock.open_sftp().stat.side_effect = (FileNotFoundError, MagicMock)
+        # mkdir results in OSError
+        client_mock.open_sftp().mkdir.side_effect = OSError("error")
+
+        transfer._prepare_target_transfer()
+
+        sftp_mock = client_mock.open_sftp()
+        assert sftp_mock.stat.call_count == 2
+        sftp_mock.mkdir.assert_called_once_with("/s3-transfer-test/.file.mxf")
+
+    @patch("app.helpers.transfer.SSHClient")
+    def test_prepare_target_transfer_folder_error(
+        self, ssh_client_mock, transfer, caplog
+    ):
+        """File does not exist but tmp folder can't be created."""
+        client_mock = ssh_client_mock().__enter__()
+        # File not found and folder not found. Gets called twice.
+        client_mock.open_sftp().stat.side_effect = FileNotFoundError
+        # mkdir results in OSError
+        client_mock.open_sftp().mkdir.side_effect = OSError("error")
+
+        with pytest.raises(OSError):
+            transfer._prepare_target_transfer()
+
+        sftp_mock = client_mock.open_sftp()
+        log_record = caplog.records[0]
+        assert log_record.level == "error"
+        assert log_record.message == "Error occurred when creating tmp folder: error"
+        assert log_record.tmp_folder == "/s3-transfer-test/.file.mxf"
+
+        assert sftp_mock.stat.call_count == 2
+        sftp_mock.mkdir.assert_called_once_with("/s3-transfer-test/.file.mxf")

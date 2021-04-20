@@ -245,24 +245,20 @@ class Transfer:
 
         return size_in_bytes
 
-    @retry(TransferException, tries=3, delay=3, logger=log)
-    def transfer(self):
-        """Transfer a file to a remote server
+    def _prepare_target_transfer(self):
+        """Prepare for transferring the file to the remote server.
 
-        First we'll make the tmp dir to transfer the parts to.
-        Then, fetch the size of the file to determine how to split it up in parts.
-        Split up in parts and each part will be separately transferred in its own Thread.
-        When the threads are done, assemble the file.
+        Do the following:
+        - Check if the file does not exist yet.
+        - Create the tmp folder if it does not exist yet. Note that if the tmp folder
+          already exists, we'll just continue.
 
-        Rename/move the assembled file to its correct destination folder.
-        Lastly, remove the parts and tmp folder.
+        Raises:
+            OSError:
+                -The file already exists.
+                -The tmp folder couldn't be created.
+            SSHException: When a SSH error occurred.
         """
-
-        log.info(f"Start transferring of file: {self.source_url}")
-
-        # Fetch size of the file to transfer
-        self.size_in_bytes = self._fetch_size()
-
         # Check if file doesn't exist yet and make the tmp dir
         with SSHClient() as remote_client:
             try:
@@ -299,13 +295,33 @@ class Transfer:
                             tmp_folder=self.dest_folder_tmp_dirname,
                         )
                         raise os_e
-
             except SSHException as ssh_e:
                 log.error(
-                    f"SSH Error occurred creating tmp folder: {ssh_e}",
+                    f"SSH Error occurred: {ssh_e}",
                     tmp_folder=self.dest_folder_tmp_dirname,
                 )
                 raise TransferException
+
+    @retry(TransferException, tries=3, delay=3, logger=log)
+    def transfer(self):
+        """Transfer a file to a remote server
+
+        First we'll make the tmp dir to transfer the parts to.
+        Then, fetch the size of the file to determine how to split it up in parts.
+        Split up in parts and each part will be separately transferred in its own Thread.
+        When the threads are done, assemble the file.
+
+        Rename/move the assembled file to its correct destination folder.
+        Lastly, remove the parts and tmp folder.
+        """
+
+        log.info(f"Start transferring of file: {self.source_url}")
+
+        # Fetch size of the file to transfer
+        self.size_in_bytes = self._fetch_size()
+
+        # Check if file doesn't exist yet and make the tmp dir
+        self._prepare_target_transfer()
 
         # Transfer the parts
         parts = calculate_ranges(int(self.size_in_bytes), NUMBER_PARTS)
