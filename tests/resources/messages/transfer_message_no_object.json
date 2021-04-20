@@ -1,0 +1,13 @@
+{
+    "source": {
+        "domain": {
+            "name": "prefix.domain.be"
+        },
+        "bucket": {
+            "name": "bucket-highres"
+        }
+    },
+    "destination": {
+        "path": "/path/to/folder/pid.mxf"
+    }
+}

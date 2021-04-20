@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 
 import functools
-import json
 import threading
 
 from pika.exceptions import AMQPConnectionError
 from viaa.configuration import ConfigParser
 from viaa.observability import logging
 
+from app.helpers.message_parser import parse_validate_json, InvalidMessageException
 from app.helpers.transfer import TransferPartException, TransferException, transfer
 from app.services.rabbit import RabbitClient
 
@@ -42,8 +42,18 @@ class EventListener:
             pass
 
     def do_work(self, channel, delivery_tag, body):
+        # Parse and validate the message
         try:
-            transfer(json.loads(body))
+            message = parse_validate_json(body)
+        except InvalidMessageException as ime:
+            self.log.warning(ime.message)
+            cb_nack = functools.partial(self.nack_message, channel, delivery_tag)
+            self.rabbit_client.connection.add_callback_threadsafe(cb_nack)
+            return
+
+        # Start the transfer
+        try:
+            transfer(message)
         except (TransferPartException, TransferException, OSError):
             self.log.error("Transfer failed")
             cb_nack = functools.partial(self.nack_message, channel, delivery_tag)

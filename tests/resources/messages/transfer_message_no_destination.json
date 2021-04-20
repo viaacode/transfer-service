@@ -1,0 +1,13 @@
+{
+    "source": {
+        "domain": {
+            "name": "prefix.domain.be"
+        },
+        "object": {
+            "key": "key.mxf"
+        },
+        "bucket": {
+            "name": "bucket-highres"
+        }
+    }
+}
