@@ -1,18 +1,20 @@
 viaa:
-    logging:
-      level: DEBUG
+  logging:
+    level: DEBUG
 app:
-    rabbitmq:
-      host: !ENV ${RABBITMQ_HOST}
-      port: 5672
-      username: !ENV ${RABBITMQ_USERNAME}
-      password: !ENV ${RABBITMQ_PASSWORD}
-      queue: !ENV ${RABBITMQ_QUEUE}
-      prefetch_count: !ENV ${RABBITMQ_PREFETCH_COUNT}
-    source:
-      swarmurl: !ENV ${CASTOR_SWARMURL}
-      domain: !ENV ${CASTOR_SWARMDOMAIN}
-    destination:
-      host: !ENV ${SSH_HOST}
-      user: !ENV ${SSH_USER}
-      password: !ENV ${SSH_PASSWORD}
+  rabbitmq:
+    host: !ENV ${RABBITMQ_HOST}
+    port: 5672
+    username: !ENV ${RABBITMQ_USERNAME}
+    password: !ENV ${RABBITMQ_PASSWORD}
+    queue: !ENV ${RABBITMQ_QUEUE}
+    prefetch_count: !ENV ${RABBITMQ_PREFETCH_COUNT}
+  source:
+    swarmurl: !ENV ${CASTOR_SWARMURL}
+    domain: !ENV ${CASTOR_SWARMDOMAIN}
+  destination:
+    host: !ENV ${SSH_HOST}
+    user: !ENV ${SSH_USER}
+    password: !ENV ${SSH_PASSWORD}
+    free_space_percentage: !ENV ${SSH_FREE_SPACE_PERCENTAGE}
+    file_system: !ENV ${SSH_FILE_SYSTEM}

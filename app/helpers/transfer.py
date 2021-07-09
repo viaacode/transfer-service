@@ -3,6 +3,7 @@
 import os
 import shlex
 import threading
+import time
 from typing import List
 
 import requests
@@ -147,6 +148,24 @@ class Transfer:
         self.source_url = f"http://{config['source']['swarmurl']}/{bucket}/{key}"
         self.size_in_bytes = 0
 
+        # SSH client
+        self.remote_client = None
+        # SFTP client
+        self.sftp = None
+
+    def _init_remote_client(self):
+        # SSH client
+        self.remote_client = SSHClient()
+        self.remote_client.set_missing_host_key_policy(AutoAddPolicy())
+        self.remote_client.connect(
+            dest_conf["host"],
+            port=22,
+            username=dest_conf["user"],
+            password=dest_conf["password"],
+        )
+        # SFTP client
+        self.sftp = self.remote_client.open_sftp()
+
     @retry(TransferPartException, tries=3, delay=3, logger=log)
     def _transfer_part(
         self,
@@ -245,6 +264,49 @@ class Transfer:
 
         return size_in_bytes
 
+    def _check_free_space(self):
+        """Check if there is sufficient free space on the remote server.
+
+        The free space needs to be a higher than a given percentage in order
+        to be allowed to send the file over. If the space is lower, then it
+        will retry until the space is freed.
+
+        This free space check is optional, in the sense that if one or more of
+        the needed config values are empty, it will assume that a transfer is
+        always allowed.
+        """
+        try:
+            percentage_limit = int(dest_conf["free_space_percentage"])
+        except ValueError:
+            percentage_limit = ""
+        file_system = dest_conf["file_system"]
+
+        # If percentage limit or file system is not filled in, skip the check.
+        if percentage_limit and file_system:
+            while True:
+                # Check the used space in percentage
+                _stdin, stdout, _stderr = self.remote_client.exec_command(
+                    f"df --output=pcent {file_system} | tail -1"
+                )
+                out = stdout.readlines()
+                # Parse the used percentage as an int.
+                try:
+                    percentage_used = int(
+                        out[0].strip().split("%")[0]  # Output example: [' 12%\n']
+                    )
+                except ValueError:
+                    log.warning("Could not get used percentage")
+                    break
+
+                free_percentage = 100 - percentage_used
+                log.info(
+                    f"Free space: {free_percentage}%. Space needed: {percentage_limit}%"
+                )
+                if free_percentage > percentage_limit:
+                    break
+                else:
+                    time.sleep(120)
+
     def _prepare_target_transfer(self):
         """Prepare for transferring the file to the remote server.
 
@@ -260,47 +322,38 @@ class Transfer:
             TransferException: When a SSH error occurred.
         """
         # Check if file doesn't exist yet and make the tmp dir
-        with SSHClient() as remote_client:
+
+        try:
+            # Check if the file does not exist yet
             try:
-                remote_client.set_missing_host_key_policy(AutoAddPolicy())
-                remote_client.connect(
-                    dest_conf["host"],
-                    port=22,
-                    username=dest_conf["user"],
-                    password=dest_conf["password"],
-                )
-                sftp = remote_client.open_sftp()
+                self.sftp.stat(self.destination_path)
+            except FileNotFoundError:
+                # Continue
+                pass
+            else:
+                # If the file exists stop.
+                log.error("File already exists", destination=self.destination_path)
+                raise OSError
 
-                # Check if the file does not exist yet
+            # Create tmp folder if it doesn't exist yet
+            try:
+                self.sftp.mkdir(self.dest_folder_tmp_dirname)
+            except OSError as os_e:
+                # If the folder already exists, just continue
                 try:
-                    sftp.stat(self.destination_path)
+                    self.sftp.stat(self.dest_folder_tmp_dirname)
                 except FileNotFoundError:
-                    # Continue
-                    pass
-                else:
-                    # If the file exists stop.
-                    log.error("File already exists", destination=self.destination_path)
-                    raise OSError
-
-                # Create tmp folder if it doesn't exist yet
-                try:
-                    sftp.mkdir(self.dest_folder_tmp_dirname)
-                except OSError as os_e:
-                    # If the folder already exists, just continue
-                    try:
-                        sftp.stat(self.dest_folder_tmp_dirname)
-                    except FileNotFoundError:
-                        log.error(
-                            f"Error occurred when creating tmp folder: {os_e}",
-                            tmp_folder=self.dest_folder_tmp_dirname,
-                        )
-                        raise os_e
-            except SSHException as ssh_e:
-                log.error(
-                    f"SSH Error occurred: {ssh_e}",
-                    tmp_folder=self.dest_folder_tmp_dirname,
-                )
-                raise TransferException
+                    log.error(
+                        f"Error occurred when creating tmp folder: {os_e}",
+                        tmp_folder=self.dest_folder_tmp_dirname,
+                    )
+                    raise os_e
+        except SSHException as ssh_e:
+            log.error(
+                f"SSH Error occurred: {ssh_e}",
+                tmp_folder=self.dest_folder_tmp_dirname,
+            )
+            raise TransferException
 
     def _transfer_parts(self):
         """Transfer the file in separate parts.
@@ -344,69 +397,56 @@ class Transfer:
             TransferException: If an OSError occurs.
         """
         log.info("Start assembling the parts", destination=self.destination_path)
-        with SSHClient() as remote_client:
-            try:
-                remote_client.set_missing_host_key_policy(AutoAddPolicy())
-                remote_client.connect(
-                    dest_conf["host"],
-                    port=22,
-                    username=dest_conf["user"],
-                    password=dest_conf["password"],
+        try:
+            _stdin, stdout, stderr = self.remote_client.exec_command(
+                build_assemble_command(
+                    self.dest_folder_tmp_dirname,
+                    self.dest_file_basename,
+                    NUMBER_PARTS,
                 )
-                _stdin, stdout, stderr = remote_client.exec_command(
-                    build_assemble_command(
-                        self.dest_folder_tmp_dirname,
-                        self.dest_file_basename,
-                        NUMBER_PARTS,
-                    )
-                )
-                # This waits for assembling to finish?
-                _ = stdout.readlines()
-                _ = stderr.readlines()
+            )
+            # This waits for assembling to finish?
+            _ = stdout.readlines()
+            _ = stderr.readlines()
 
-                sftp = remote_client.open_sftp()
-                sftp.chdir(self.dest_folder_tmp_dirname)
+            self.sftp.chdir(self.dest_folder_tmp_dirname)
 
-                # Check if file has the correct size
-                file_attrs = sftp.stat(self.dest_file_tmp_basename)
-                if file_attrs.st_size != int(self.size_in_bytes):
-                    log.error(
-                        f"Size of assembled file: {file_attrs.st_size}, expected size: {self.size_in_bytes}",
-                        source_url=self.source_url,
-                        destination_basename=self.dest_file_tmp_basename,
-                    )
-                    raise TransferException
-                # Rename and move file destination folder
-                sftp.rename(
-                    os.path.join(
-                        self.dest_folder_tmp_dirname, self.dest_file_tmp_basename
-                    ),
-                    self.destination_path,
-                )
-                # Touch the file so MH picks it up
-                # Explicitly use a `SSH touch` as `SFTP utime` doesn't work
-                remote_client.exec_command(f"touch '{self.destination_path}'")
-
-                # Delete the parts
-                for idx in range(NUMBER_PARTS):
-                    try:
-                        sftp.remove(
-                            calculate_filename_part(self.dest_file_basename, idx)
-                        )
-                    except FileNotFoundError:
-                        # Only delete parts that exist
-                        pass
-                # Delete the tmp folder
-                sftp.rmdir(self.dest_folder_tmp_dirname)
-                log.info(
-                    "File successfully transferred", destination=self.destination_path
-                )
-            except OSError as os_e:
+            # Check if file has the correct size
+            file_attrs = self.sftp.stat(self.dest_file_tmp_basename)
+            if file_attrs.st_size != int(self.size_in_bytes):
                 log.error(
-                    f"Error occurred when assembling parts: {os_e}",
-                    destination=self.destination_path,
+                    f"Size of assembled file: {file_attrs.st_size}, expected size: {self.size_in_bytes}",
+                    source_url=self.source_url,
+                    destination_basename=self.dest_file_tmp_basename,
                 )
                 raise TransferException
+            # Rename and move file destination folder
+            self.sftp.rename(
+                os.path.join(self.dest_folder_tmp_dirname, self.dest_file_tmp_basename),
+                self.destination_path,
+            )
+            # Touch the file so MH picks it up
+            # Explicitly use a `SSH touch` as `SFTP utime` doesn't work
+            self.remote_client.exec_command(f"touch '{self.destination_path}'")
+
+            # Delete the parts
+            for idx in range(NUMBER_PARTS):
+                try:
+                    self.sftp.remove(
+                        calculate_filename_part(self.dest_file_basename, idx)
+                    )
+                except FileNotFoundError:
+                    # Only delete parts that exist
+                    pass
+            # Delete the tmp folder
+            self.sftp.rmdir(self.dest_folder_tmp_dirname)
+            log.info("File successfully transferred", destination=self.destination_path)
+        except OSError as os_e:
+            log.error(
+                f"Error occurred when assembling parts: {os_e}",
+                destination=self.destination_path,
+            )
+            raise TransferException
 
     @retry(TransferException, tries=3, delay=3, logger=log)
     def transfer(self):
@@ -421,16 +461,30 @@ class Transfer:
         Lastly, remove the parts and tmp folder.
         """
 
-        log.info(f"Start transferring of file: {self.source_url}")
+        try:
+            log.info(f"Start transferring of file: {self.source_url}")
 
-        # Fetch size of the file to transfer
-        self.size_in_bytes = self._fetch_size()
+            # initialize the SSH client
+            self._init_remote_client()
 
-        # Check if file doesn't exist yet and make the tmp dir
-        self._prepare_target_transfer()
+            # Check freespace
+            self._check_free_space()
+
+            # Fetch size of the file to transfer
+            self.size_in_bytes = self._fetch_size()
+
+            # Check if file doesn't exist yet and make the tmp dir
+            self._prepare_target_transfer()
+        finally:
+            self.remote_client.close()
 
         # Transfer the parts
         self._transfer_parts()
 
-        # Assemble the parts
-        self._assemble_parts()
+        try:
+            # Re-initialize the SSH client
+            self._init_remote_client()
+            # Assemble the parts
+            self._assemble_parts()
+        finally:
+            self.remote_client.close()
