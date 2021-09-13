@@ -238,7 +238,6 @@ class TestTransfer:
         with pytest.raises(OSError):
             transfer._prepare_target_transfer()
 
-        sftp_mock = sftp_mock
         log_record = caplog.records[0]
         assert log_record.level == "error"
         assert log_record.message == "Error occurred when creating tmp folder: error"
