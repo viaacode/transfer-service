@@ -9,7 +9,7 @@ We don't want any traffic in the service itself, so the file is transferred from
 A transfer will be split up in multiple parts of the same size. Each part will be transferred simultaneously, running in a separate thread. Afterwards
 the file will be assembled into the destination file.
 
-There is an optional free space check in which the remote server needs to have a certain amount of free space (in percentage) before the file is transferred. If that free space is not met, the service will sleep indefinitely until the space is freed. The information needed for the check is defined by the ENV vars: `SSH_FREE_SPACE_PERCENTAGE`, `SSH_FILE_SYSTEM`. The vars are mandatory but the values may be empty. In fact, if at least one of the values are empty than the check will not be executed, and the file will be transferred regardless of the free space on the target server.
+There is an optional free space check in which the remote server needs to have a certain amount of free space (in percentage) before the file is transferred. If that free space is not met, the service will sleep indefinitely until the space is freed. The information needed for the check is defined by the ENV vars: `SSH_FREE_SPACE_PERCENTAGE`, `SSH_FILE_SYSTEM`. The latter is the mountpoint of the filesystem to check the free space of. The vars are mandatory but the values may be empty. In fact, if at least one of the values are empty than the check will not be executed, and the file will be transferred regardless of the free space on the target server.
 
 ## Prerequisites
 
@@ -48,9 +48,9 @@ There is an optional free space check in which the remote server needs to have a
 
     `$ poetry install`
 
-2. Run the tests (set the values in `.env.example` first):
+2. Run the tests (and setting the values in `.env.example` first):
 
-    `$ poetry run pytest -v --cov=./app`
+    `$ export $(grep -v '^#' .env.example | xargs -0); poetry run pytest -v --cov=./app`
 
 3. Run the application:
 
