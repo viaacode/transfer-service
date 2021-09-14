@@ -14,11 +14,17 @@ sts -> rabbit: Listen to queue
 loop
     rabbit -> sts: Transfer message request
     sts -> tra: Connect via SSH
+    opt SSH_FREE_SPACE_PERCENTAGE && SSH_FILE_SYSTEM
+        loop While not enough free space
+            tra -> tra: Check free space
+            tra -> tra: Sleep 120 seconds
+        end
+    end
     alt file does not yet exist
         tra -> tra: Create tmp folder if not yet exists
         loop for each part
-	    tra -> os: cURL part to tmp folder
-	    os -> tra: send part to tmp folder
+        tra -> os: cURL part to tmp folder
+        os -> tra: send part to tmp folder
         end
         tra -> tra: Assemble parts to tmp file in tmp folder
         tra -> tra: Rename/move tmp file to destination file

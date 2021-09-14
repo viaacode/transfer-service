@@ -59,7 +59,8 @@ def test_calculate_filename_part():
 
 class TestTransfer:
     @pytest.fixture()
-    def transfer(self) -> Transfer:
+    @patch("app.helpers.transfer.SSHClient")
+    def transfer(self, ssh_client_mock) -> Transfer:
         msg = {
             "source": {
                 "domain": {"name": "domain"},
@@ -68,8 +69,9 @@ class TestTransfer:
             },
             "destination": {"path": "/s3-transfer-test/file.mxf"},
         }
-
-        return Transfer(msg)
+        transfer = Transfer(msg)
+        transfer._init_remote_client()
+        return transfer
 
     @patch("app.helpers.transfer.build_curl_command", return_value="curl")
     @patch("app.helpers.transfer.SSHClient")
@@ -186,30 +188,24 @@ class TestTransfer:
         assert log_record.level == "error"
         assert log_record.message == "Failed to get size of file on Castor"
 
-    @patch("app.helpers.transfer.SSHClient")
-    def test_prepare_target_transfer(self, ssh_client_mock, transfer):
+    def test_prepare_target_transfer(self, transfer):
         """File does not exist and folder is created"""
-        client_mock = ssh_client_mock().__enter__()
-        client_mock.open_sftp().stat.side_effect = FileNotFoundError
+        sftp_mock = transfer.sftp
+
+        sftp_mock.stat.side_effect = FileNotFoundError
 
         transfer._prepare_target_transfer()
-
-        sftp_mock = client_mock.open_sftp()
 
         sftp_mock.stat.assert_called_once_with("/s3-transfer-test/file.mxf")
         sftp_mock.mkdir.assert_called_once_with("/s3-transfer-test/.file.mxf")
 
-    @patch("app.helpers.transfer.SSHClient")
-    def test__prepare_target_transfer_file_exists(
-        self, ssh_client_mock, transfer, caplog
-    ):
+    def test__prepare_target_transfer_file_exists(self, transfer, caplog):
         """File already exist."""
-        client_mock = ssh_client_mock().__enter__()
 
         with pytest.raises(OSError):
             transfer._prepare_target_transfer()
 
-        sftp_mock = client_mock.open_sftp()
+        sftp_mock = transfer.sftp
         log_record = caplog.records[0]
         assert log_record.level == "error"
         assert log_record.message == "File already exists"
@@ -218,36 +214,30 @@ class TestTransfer:
         sftp_mock.stat.assert_called_once_with("/s3-transfer-test/file.mxf")
         sftp_mock.mkdir.assert_not_called()
 
-    @patch("app.helpers.transfer.SSHClient")
-    def test_prepare_target_transfer_folder_exists(self, ssh_client_mock, transfer):
+    def test_prepare_target_transfer_folder_exists(self, transfer):
         """File does not exist and tmp folder already exists."""
-        client_mock = ssh_client_mock().__enter__()
+        sftp_mock = transfer.sftp
         # File not found but folder is found.
-        client_mock.open_sftp().stat.side_effect = (FileNotFoundError, MagicMock)
+        sftp_mock.stat.side_effect = (FileNotFoundError, MagicMock)
         # mkdir results in OSError
-        client_mock.open_sftp().mkdir.side_effect = OSError("error")
+        sftp_mock.mkdir.side_effect = OSError("error")
 
         transfer._prepare_target_transfer()
 
-        sftp_mock = client_mock.open_sftp()
         assert sftp_mock.stat.call_count == 2
         sftp_mock.mkdir.assert_called_once_with("/s3-transfer-test/.file.mxf")
 
-    @patch("app.helpers.transfer.SSHClient")
-    def test_prepare_target_transfer_folder_error(
-        self, ssh_client_mock, transfer, caplog
-    ):
+    def test_prepare_target_transfer_folder_error(self, transfer, caplog):
         """File does not exist but tmp folder can't be created."""
-        client_mock = ssh_client_mock().__enter__()
+        sftp_mock = transfer.sftp
         # File not found and folder not found. Gets called twice.
-        client_mock.open_sftp().stat.side_effect = FileNotFoundError
+        sftp_mock.stat.side_effect = FileNotFoundError
         # mkdir results in OSError
-        client_mock.open_sftp().mkdir.side_effect = OSError("error")
+        sftp_mock.mkdir.side_effect = OSError("error")
 
         with pytest.raises(OSError):
             transfer._prepare_target_transfer()
 
-        sftp_mock = client_mock.open_sftp()
         log_record = caplog.records[0]
         assert log_record.level == "error"
         assert log_record.message == "Error occurred when creating tmp folder: error"
@@ -291,19 +281,16 @@ class TestTransfer:
         ) in call_args
 
     @patch("app.helpers.transfer.build_assemble_command", return_value="cat")
-    @patch("app.helpers.transfer.SSHClient")
-    def test_assemble_parts(
-        self, ssh_client_mock, build_assemble_command_mock, transfer, caplog
-    ):
+    def test_assemble_parts(self, build_assemble_command_mock, transfer, caplog):
         """Successfully assemble the parts."""
         stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
 
         # Mock exec command
-        client_mock = ssh_client_mock().__enter__()
+        client_mock = transfer.remote_client
         client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
 
         transfer.size_in_bytes = 1000
-        sftp_mock = client_mock.open_sftp()
+        sftp_mock = transfer.sftp
         # Mock check filesize of transferred file
         sftp_mock.stat.return_value.st_size = 1000
 
@@ -361,19 +348,18 @@ class TestTransfer:
         assert log_record.destination == "/s3-transfer-test/file.mxf"
 
     @patch("app.helpers.transfer.build_assemble_command", return_value="cat")
-    @patch("app.helpers.transfer.SSHClient")
     def test_assemble_parts_different_size(
-        self, ssh_client_mock, build_assemble_command_mock, transfer, caplog
+        self, build_assemble_command_mock, transfer, caplog
     ):
         """Assembled file has incorrect file size."""
         stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
 
         # Mock exec command
-        client_mock = ssh_client_mock().__enter__()
+        client_mock = transfer.remote_client
         client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
 
         transfer.size_in_bytes = 1000
-        sftp_mock = client_mock.open_sftp()
+        sftp_mock = transfer.sftp
         # Mock check filesize of transferred file
         sftp_mock.stat.return_value.st_size = 500
 
@@ -391,18 +377,17 @@ class TestTransfer:
         assert log_record.destination_basename == "file.mxf.tmp"
 
     @patch("app.helpers.transfer.build_assemble_command", return_value="cat")
-    @patch("app.helpers.transfer.SSHClient")
     def test_assemble_parts_os_error(
-        self, ssh_client_mock, build_assemble_command_mock, transfer, caplog
+        self, build_assemble_command_mock, transfer, caplog
     ):
         """An OSError occurred when assembling."""
         stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
 
         # Mock exec command
-        client_mock = ssh_client_mock().__enter__()
+        client_mock = transfer.remote_client
         client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
 
-        sftp_mock = client_mock.open_sftp()
+        sftp_mock = transfer.sftp
         # Checking filesize returns OSError
         sftp_mock.stat.side_effect = OSError("error")
 
@@ -417,6 +402,65 @@ class TestTransfer:
         assert log_record.level == "error"
         assert log_record.message == "Error occurred when assembling parts: error"
 
+    @patch("time.sleep", return_value=None)
+    @patch.dict(
+        "app.helpers.transfer.dest_conf",
+        {"free_space_percentage": "15", "file_system": "/mnt"},
+    )
+    def test_check_free_space(self, sleep_mock, transfer, caplog):
+        """
+        Check the free space twice. First there will not be enough free space.
+        Then after a sleep, it will check again. The second check will return
+        enough free space.
+        """
+        # Mock exec command
+        stdin_mock, stdout_mock_no_space, stdout_mock_enough_space, stderr_mock = (
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+        )
+        stdout_mock_no_space.readlines.return_value = [" 95%\n"]
+        stdout_mock_enough_space.readlines.return_value = [" 15%\n"]
+
+        client_mock = transfer.remote_client
+
+        client_mock.exec_command.side_effect = [
+            (stdin_mock, stdout_mock_no_space, stderr_mock),
+            (stdin_mock, stdout_mock_enough_space, stderr_mock),
+        ]
+
+        transfer._check_free_space()
+
+        # Check executing the 'df' commands
+        transfer.remote_client.exec_command.call_count == 2
+        for args in transfer.remote_client.exec_command.cal_args_list:
+            assert args.args == "df --output=pcent /mnt | tail -1"
+
+        # Check time.sleep
+        sleep_mock.assert_called_once_with(120)
+
+        # Check logs
+        log_record = caplog.records[0]
+        assert log_record.level == "info"
+        assert log_record.message == "Free space: 5%. Space needed: 15%"
+        log_record = caplog.records[1]
+        assert log_record.level == "info"
+        assert log_record.message == "Free space: 85%. Space needed: 15%"
+
+    @patch.dict(
+        "app.helpers.transfer.dest_conf",
+        {"free_space_percentage": "", "file_system": ""},
+    )
+    def test_check_free_space_empty_config(self, transfer, caplog):
+        transfer._check_free_space()
+
+        transfer.remote_client.exec_command.assert_not_called()
+
+        assert not len(caplog.records)
+
+    @patch.object(Transfer, "_init_remote_client")
+    @patch.object(Transfer, "_check_free_space")
     @patch.object(Transfer, "_fetch_size")
     @patch.object(Transfer, "_prepare_target_transfer")
     @patch.object(Transfer, "_transfer_parts")
@@ -427,6 +471,8 @@ class TestTransfer:
         transfer_parts_mock,
         prepare_target_transfer_mock,
         fetch_size_mock,
+        check_free_space_mock,
+        init_remote_client_mock,
         transfer,
         caplog,
     ):
@@ -443,6 +489,11 @@ class TestTransfer:
         assert transfer.size_in_bytes == 0
 
         transfer.transfer()
+        # Initialisation of the remote client
+        assert init_remote_client_mock.call_count == 2
+        assert transfer.remote_client.close.call_count == 2
+        # Free space check
+        check_free_space_mock.assert_called_once()
         # Fetch size
         fetch_size_mock.assert_called_once()
         # Prepare the target server for transferring the parts
