@@ -1,10 +1,4 @@
 {
-    "source": {
-        "url": "http://host:port/path/",
-        "headers": {
-            "host": "domain"
-        }
-    },
     "destination": {
         "host": "tst-server",
         "path": "/path/to/folder/pid.mxf",

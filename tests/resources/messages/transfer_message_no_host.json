@@ -5,6 +5,10 @@
             "host": "domain"
         }
     },
+    "destination": {
+        "path": "/path/to/folder/pid.mxf",
+        "credentials": "vault-secret"
+    },
     "outcome": {
         "pulsar-topic": "topic"
     }

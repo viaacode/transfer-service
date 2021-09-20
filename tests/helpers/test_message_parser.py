@@ -7,28 +7,38 @@ from app.helpers.message_parser import parse_validate_json, InvalidMessageExcept
 from tests.resources import (
     transfer_message,
     transfer_message_empty,
-    transfer_message_no_bucket,
+    transfer_message_no_source,
     transfer_message_no_destination,
-    transfer_message_no_domain,
-    transfer_message_no_object,
+    transfer_message_no_url,
+    transfer_message_no_headers,
+    transfer_message_no_host,
+    transfer_message_no_path,
+    transfer_message_no_credentials,
+    transfer_message_no_outcome,
 )
 
 
 INVALID_JSON_MESSAGES = [
     (transfer_message_empty, "source"),
-    (transfer_message_no_bucket, "bucket"),
+    (transfer_message_no_source, "source"),
     (transfer_message_no_destination, "destination"),
-    (transfer_message_no_domain, "domain"),
-    (transfer_message_no_object, "object"),
+    (transfer_message_no_url, "url"),
+    (transfer_message_no_headers, "headers"),
+    (transfer_message_no_host, "host"),
+    (transfer_message_no_path, "path"),
+    (transfer_message_no_credentials, "credentials"),
+    (transfer_message_no_outcome, "outcome"),
 ]
 
 
 def test_parse_validate_json():
     msg_json = parse_validate_json(transfer_message)
-    assert msg_json["source"]["domain"]["name"] == "prefix.domain.be"
-    assert msg_json["source"]["object"]["key"] == "key.mxf"
-    assert msg_json["source"]["bucket"]["name"] == "bucket-highres"
+    assert msg_json["source"]["url"] == "http://host:port/path/"
+    assert msg_json["source"]["headers"] == {"host": "domain"}
+    assert msg_json["destination"]["host"] == "tst-server"
     assert msg_json["destination"]["path"] == "/path/to/folder/pid.mxf"
+    assert msg_json["destination"]["credentials"] == "vault-secret"
+    assert msg_json["outcome"]["pulsar-topic"] == "topic"
 
 
 def test_parse_validate_json_decode_error():

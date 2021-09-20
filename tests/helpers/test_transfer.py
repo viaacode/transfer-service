@@ -63,11 +63,15 @@ class TestTransfer:
     def transfer(self, ssh_client_mock) -> Transfer:
         msg = {
             "source": {
-                "domain": {"name": "domain"},
-                "object": {"key": "file.mxf"},
-                "bucket": {"name": "bucket"},
+                "url": "http://url/bucket/file.mxf",
+                "headers": {"host": "domain"},
             },
-            "destination": {"path": "/s3-transfer-test/file.mxf"},
+            "destination": {
+                "host": "tst-server",
+                "path": "/s3-transfer-test/file.mxf",
+                "credentials": "vault-secret",
+            },
+            "outcome": {"pulsar-topic": "topic"},
         }
         transfer = Transfer(msg)
         transfer._init_remote_client()

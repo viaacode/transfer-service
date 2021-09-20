@@ -131,7 +131,7 @@ class Transfer:
         Args:
             message: Contains the information of the source file and the destination
                 filename."""
-        self.domain = message["source"]["domain"]["name"]
+        self.domain = message["source"]["headers"].get("host")
         self.destination_path = message["destination"]["path"]
 
         self.dest_folder_dirname = os.path.dirname(self.destination_path)
@@ -143,9 +143,7 @@ class Transfer:
             self.dest_folder_dirname, dest_folder_tmp_basename
         )
 
-        bucket = message["source"]["bucket"]["name"]
-        key = message["source"]["object"]["key"]
-        self.source_url = f"http://{config['source']['swarmurl']}/{bucket}/{key}"
+        self.source_url = message["source"]["url"]
         self.size_in_bytes = 0
 
         # SSH client
