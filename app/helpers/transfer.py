@@ -119,9 +119,13 @@ def build_assemble_command(
     return shlex.join(assemble_command).replace("'&&'", "&&").replace("'>'", ">")
 
 
-def calculate_filename_part(file: str, idx: int) -> str:
+def calculate_filename_part(file: str, idx: int, directory: str = None) -> str:
     """Convenience method for calculating the filename of a part."""
-    return f"{file}.part{idx}"
+    part = f"{file}.part{idx}"
+    if directory:
+        return os.path.join(directory, part)
+    else:
+        return part
 
 
 class Transfer:
@@ -363,9 +367,8 @@ class Transfer:
         parts = calculate_ranges(int(self.size_in_bytes), NUMBER_PARTS)
         threads = []
         for idx, part in enumerate(parts):
-            dest_file_part_full = os.path.join(
-                self.dest_folder_tmp_dirname,
-                calculate_filename_part(self.dest_file_basename, idx),
+            dest_file_part_full = calculate_filename_part(
+                self.dest_file_basename, idx, directory=self.dest_folder_tmp_dirname
             )
             thread = threading.Thread(
                 target=self._transfer_part,
@@ -407,20 +410,22 @@ class Transfer:
             _ = stdout.readlines()
             _ = stderr.readlines()
 
-            self.sftp.chdir(self.dest_folder_tmp_dirname)
+            self.dest_file_tmp_filename = os.path.join(
+                self.dest_folder_tmp_dirname, self.dest_file_tmp_basename
+            )
 
             # Check if file has the correct size
-            file_attrs = self.sftp.stat(self.dest_file_tmp_basename)
+            file_attrs = self.sftp.stat(self.dest_file_tmp_filename)
             if file_attrs.st_size != int(self.size_in_bytes):
                 log.error(
                     f"Size of assembled file: {file_attrs.st_size}, expected size: {self.size_in_bytes}",
                     source_url=self.source_url,
-                    destination_basename=self.dest_file_tmp_basename,
+                    destination_filename=self.dest_file_tmp_filename,
                 )
                 raise TransferException
             # Rename and move file destination folder
             self.sftp.rename(
-                os.path.join(self.dest_folder_tmp_dirname, self.dest_file_tmp_basename),
+                self.dest_file_tmp_filename,
                 self.destination_path,
             )
             # Touch the file so MH picks it up
@@ -431,7 +436,11 @@ class Transfer:
             for idx in range(NUMBER_PARTS):
                 try:
                     self.sftp.remove(
-                        calculate_filename_part(self.dest_file_basename, idx)
+                        calculate_filename_part(
+                            self.dest_file_basename,
+                            idx,
+                            directory=self.dest_folder_tmp_dirname,
+                        )
                     )
                 except FileNotFoundError:
                     # Only delete parts that exist
