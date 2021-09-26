@@ -15,3 +15,6 @@ app:
     password: !ENV ${SSH_PASSWORD}
     free_space_percentage: !ENV ${SSH_FREE_SPACE_PERCENTAGE}
     file_system: !ENV ${SSH_FILE_SYSTEM}
+  pulsar:
+    host: !ENV ${PULSAR_HOST}
+    port: 6650
