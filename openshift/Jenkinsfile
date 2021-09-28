@@ -8,8 +8,8 @@ pipeline {
         metadata:
           labels:
             component: builder
-            lang: python
-            app: s3-transfer-service
+            lang: ${getBaseImageName()}
+            app: transfer-service
         spec:
           containers:
           - name: default
@@ -31,22 +31,25 @@ pipeline {
         disableConcurrentBuilds()
     }
     environment {
-        OC_PROJECT = 's3-components'
-        BASE_IMG = 'python:3.8'
+        OC_PROJECT = 'sipin'
+        BASE_IMG = "${getImageFromDockerfile()}"
+        BASE_IMG_NAME = "${getBaseImageName()}"
         OC_URL = 'https://c113-e.private.eu-de.containers.cloud.ibm.com:30227'
         JIRA_URL = 'meemoo.atlassian.net'
-        APP_NAME = 's3-transfer-service'
+        APP_NAME = 'transfer-service'
     }
 
     stages {
         stage('Calculate extra ENV vars') {
             steps {
-                script {
-                    env.GIT_SHORT_COMMIT = sh(script: "printf \$(git rev-parse --short ${GIT_COMMIT})", returnStdout: true)
-                    env.IMAGE_TAG = sh(script: 'git describe --tags || echo latest', returnStdout: true)
-                    // The name used for the build config based on the image tag
-                    // Replace '.' with '_' as '.' is not allowed.
-                    env.BUILD_CONFIG_NAME = sh(script: 'echo "${IMAGE_TAG}" | sed -r "s/\\./\\-/g"', returnStdout: true)
+                container('oc') {
+                    script {
+                        env.GIT_SHORT_COMMIT = sh(script: "printf \$(git rev-parse --short ${GIT_COMMIT})", returnStdout: true)
+                        env.IMAGE_TAG = sh(script: 'git describe --tags || echo latest', returnStdout: true)
+                        // The name used for the build config based on the image tag
+                        // Replace '.' with '_' as '.' is not allowed.
+                        env.BUILD_CONFIG_NAME = sh(script: 'echo "${IMAGE_TAG}" | sed -r "s/\\./\\-/g"', returnStdout: true)
+                    }
                 }
             }
         }
@@ -67,6 +70,7 @@ pipeline {
                         sh '''#!/bin/bash
                         oc project $OC_PROJECT
                         oc import-image $BASE_IMG --confirm
+                        oc set image-lookup $BASE_IMG_NAME
                         oc new-build -l ref=$BRANCH_NAME --strategy=docker --name $APP_NAME-$GIT_SHORT_COMMIT --to $APP_NAME:$GIT_SHORT_COMMIT --binary --context-dir="" || echo "Probably already exists, start new build"
                         sleep 3
                         oc annotate --overwrite buildconfig/$APP_NAME-$GIT_SHORT_COMMIT ref=$BRANCH_NAME shortcommit=$GIT_SHORT_COMMIT
@@ -165,6 +169,9 @@ pipeline {
 
 void getImageFromDockerfile() {
     return 'python:3.8'
+}
+void getBaseImageName() {
+    return getImageFromDockerfile().split(':')[0]
 }
 
 void setGitHubBuildStatus(String message, String state) {
