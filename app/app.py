@@ -13,6 +13,7 @@ from app.helpers.message_parser import parse_validate_json, InvalidMessageExcept
 from app.helpers.transfer import TransferPartException, TransferException, Transfer
 from app.services.rabbit import RabbitClient
 from app.services.pulsar import PulsarClient
+from app.services.vault import VaultClient
 
 
 class EventListener:
@@ -27,6 +28,7 @@ class EventListener:
             self.log.error("Connection to RabbitMQ failed.")
             raise error
         self.pulsar_client = PulsarClient()
+        self.vault_client = VaultClient()
 
     def ack_message(self, channel, delivery_tag):
         if channel.is_open:
@@ -56,9 +58,9 @@ class EventListener:
 
         # Start the transfer
         try:
-            Transfer(message).transfer()
+            Transfer(message, self.vault_client).transfer()
         except (TransferPartException, TransferException, OSError) as transfer_error:
-            self.log.error(f"Transfer failed: {transfer_error}")
+            self.log.error(f"Transfer failed - {transfer_error}")
             cb_nack = functools.partial(self.nack_message, channel, delivery_tag)
             self.rabbit_client.connection.add_callback_threadsafe(cb_nack)
             # Send outcome

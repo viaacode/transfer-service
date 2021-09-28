@@ -11,6 +11,9 @@ from paramiko import AutoAddPolicy, SSHClient, SSHException
 from retry import retry
 from viaa.configuration import ConfigParser
 from viaa.observability import logging
+from hvac.exceptions import InvalidPath, Forbidden
+
+from app.services.vault import VaultClient
 
 
 config_parser = ConfigParser()
@@ -129,7 +132,7 @@ def calculate_filename_part(file: str, idx: int, directory: str = None) -> str:
 
 
 class Transfer:
-    def __init__(self, message: dict):
+    def __init__(self, message: dict, vault_client: VaultClient):
         """Initialize a Transfer.
 
         Args:
@@ -155,15 +158,28 @@ class Transfer:
         # SFTP client
         self.sftp = None
 
+        self.remote_server_host = message["destination"]["host"]
+
+        secret_path = message["destination"]["credentials"]
+        try:
+            vault_client.fetch_secret(secret_path)
+        except (InvalidPath, Forbidden) as vault_error:
+            raise TransferException(
+                f"Can not retrieve secret for path: '{secret_path}'. Error: '{vault_error}'"
+            )
+
+        self.host_username = vault_client.get_username(secret_path)
+        self.host_password = vault_client.get_password(secret_path)
+
     def _init_remote_client(self):
         # SSH client
         self.remote_client = SSHClient()
         self.remote_client.set_missing_host_key_policy(AutoAddPolicy())
         self.remote_client.connect(
-            dest_conf["host"],
+            self.remote_server_host,
             port=22,
-            username=dest_conf["user"],
-            password=dest_conf["password"],
+            username=self.host_username,
+            password=self.host_password,
         )
         # SFTP client
         self.sftp = self.remote_client.open_sftp()
@@ -195,10 +211,10 @@ class Transfer:
             try:
                 remote_client.set_missing_host_key_policy(AutoAddPolicy())
                 remote_client.connect(
-                    dest_conf["host"],
+                    self.remote_server_host,
                     port=22,
-                    username=dest_conf["user"],
-                    password=dest_conf["password"],
+                    username=self.host_username,
+                    password=self.host_password,
                 )
                 # Execute the cURL command and examine results
                 _stdin, stdout, stderr = remote_client.exec_command(curl_cmd)

@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
+from hvac.exceptions import InvalidPath, Forbidden
 from paramiko import SSHException
 
 from app.helpers.transfer import (
@@ -65,9 +66,8 @@ def test_calculate_filename_part_directory():
 
 class TestTransfer:
     @pytest.fixture()
-    @patch("app.helpers.transfer.SSHClient")
-    def transfer(self, ssh_client_mock) -> Transfer:
-        msg = {
+    def transfer_message(self) -> dict:
+        return {
             "source": {
                 "url": "http://url/bucket/file.mxf",
                 "headers": {"host": "domain"},
@@ -79,9 +79,23 @@ class TestTransfer:
             },
             "outcome": {"pulsar-topic": "topic"},
         }
-        transfer = Transfer(msg)
+
+    @pytest.fixture()
+    @patch("app.helpers.transfer.SSHClient")
+    def transfer(self, ssh_client_mock, transfer_message) -> Transfer:
+        vault_mock = MagicMock()
+        vault_mock.get_username.return_value = "ssh_user"
+        vault_mock.get_password.return_value = "ssh_pass"
+        transfer = Transfer(transfer_message, vault_mock)
         transfer._init_remote_client()
         return transfer
+
+    @pytest.mark.parametrize("side_effect", [InvalidPath, Forbidden])
+    def test_init_vault_error(self, side_effect, transfer_message):
+        vault_mock = MagicMock()
+        vault_mock.fetch_secret.side_effect = side_effect
+        with pytest.raises(TransferException):
+            Transfer(transfer_message, vault_mock)
 
     @patch("app.helpers.transfer.build_curl_command", return_value="curl")
     @patch("app.helpers.transfer.SSHClient")
@@ -104,7 +118,7 @@ class TestTransfer:
 
         assert client_mock.set_missing_host_key_policy.call_count == 1
         assert client_mock.connect.call_count == 1
-        assert client_mock.connect.call_args.args == ("ssh_host",)
+        assert client_mock.connect.call_args.args == ("tst-server",)
         assert client_mock.connect.call_args.kwargs == {
             "port": 22,
             "username": "ssh_user",
@@ -138,7 +152,7 @@ class TestTransfer:
 
         assert client_mock.set_missing_host_key_policy.call_count == 3
         assert client_mock.connect.call_count == 3
-        assert client_mock.connect.call_args.args == ("ssh_host",)
+        assert client_mock.connect.call_args.args == ("tst-server",)
         assert client_mock.connect.call_args.kwargs == {
             "port": 22,
             "username": "ssh_user",
@@ -383,7 +397,9 @@ class TestTransfer:
         assert log_record.level == "error"
         assert log_record.message == "Size of assembled file: 500, expected size: 1000"
         assert log_record.source_url == "http://url/bucket/file.mxf"
-        assert log_record.destination_filename == "s3-transfer-test/.file.mxf/file.mxf.tmp"
+        assert (
+            log_record.destination_filename == "s3-transfer-test/.file.mxf/file.mxf.tmp"
+        )
 
     @patch("app.helpers.transfer.build_assemble_command", return_value="cat")
     def test_assemble_parts_os_error(

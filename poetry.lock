@@ -246,6 +246,26 @@ url = "http://do-prd-mvn-01.do.viaa.be:8081/repository/pypi-all/simple"
 reference = "meemoo"
 
 [[package]]
+name = "hvac"
+version = "0.11.2"
+description = "HashiCorp Vault API client"
+category = "main"
+optional = false
+python-versions = ">=2.7"
+
+[package.dependencies]
+requests = ">=2.21.0"
+six = ">=1.5.0"
+
+[package.extras]
+parser = ["pyhcl (>=0.3.10)"]
+
+[package.source]
+type = "legacy"
+url = "http://do-prd-mvn-01.do.viaa.be:8081/repository/pypi-all/simple"
+reference = "meemoo"
+
+[[package]]
 name = "idna"
 version = "2.10"
 description = "Internationalized Domain Names in Applications (IDNA)"
@@ -771,7 +791,7 @@ reference = "meemoo"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.6"
-content-hash = "01a176502fc1faab6643a8a3ea29337cf5bb7137c8a8b7bd657c7b5c31e4f31c"
+content-hash = "505b378512db11cc576e521e1c813e375d79cd3e33b4da6ad9c4f8765b90169f"
 
 [metadata.files]
 appdirs = [
@@ -932,6 +952,10 @@ decorator = [
 flake8 = [
     {file = "flake8-3.8.4-py2.py3-none-any.whl", hash = "sha256:749dbbd6bfd0cf1318af27bf97a14e28e5ff548ef8e5b1566ccfb25a11e7c839"},
     {file = "flake8-3.8.4.tar.gz", hash = "sha256:aadae8761ec651813c24be05c6f7b4680857ef6afaae4651a4eccaef97ce6c3b"},
+]
+hvac = [
+    {file = "hvac-0.11.2-py2.py3-none-any.whl", hash = "sha256:3e8a34804b1e20954a2b4991cc13ed9c09b32e50dadd9d3438224481150f6568"},
+    {file = "hvac-0.11.2.tar.gz", hash = "sha256:f905c59d32d88d3f67571fe5a8a78de4659e04798ad809de439f667247d13626"},
 ]
 idna = [
     {file = "idna-2.10-py2.py3-none-any.whl", hash = "sha256:b97d804b1e9b523befed77c48dacec60e6dcb0b5391d57af6a65a312a90648c0"},
