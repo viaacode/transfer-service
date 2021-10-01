@@ -28,9 +28,10 @@ class TestPulsarClient:
         """
         assert len(pulsar_client.producers) == 0
 
-        pulsar_client.produce_event("topic", "event")
-        assert "topic" in pulsar_client.producers
-        pulsar_client.producers["topic"].send.assert_called_once_with(
+        topic = "tst-topic"
+        pulsar_client.produce_event(topic, "event")
+        assert topic in pulsar_client.producers
+        pulsar_client.producers[topic].send.assert_called_once_with(
             "event".encode("utf8")
         )
 

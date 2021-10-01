@@ -21,8 +21,8 @@ class PulsarClient:
         If there is no producer yet for the given topic, a new one will be created
         """
         if topic not in self.producers:
-            self.producers["topic"] = self.client.create_producer(topic)
-        self.producers["topic"].send(event.encode("utf8"))
+            self.producers[topic] = self.client.create_producer(topic)
+        self.producers[topic].send(event.encode("utf8"))
 
     def close(self):
         """Close all the open producers"""
