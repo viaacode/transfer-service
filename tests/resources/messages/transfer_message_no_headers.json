@@ -1,9 +1,6 @@
 {
     "source": {
-        "url": "http://host:port/path/",
-        "headers": {
-            "host": "domain"
-        }
+        "url": "http://host:port/path/"
     },
     "destination": {
         "host": "tst-server",

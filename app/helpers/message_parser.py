@@ -19,10 +19,12 @@ def _validate_json(message: dict):
         InvalidMessageException: If the message misses mandatory key(s)
     """
     try:
-        message["source"]["domain"]["name"]
-        message["source"]["object"]["key"]
-        message["source"]["bucket"]["name"]
+        message["source"]["url"]
+        message["source"]["headers"]
+        message["destination"]["host"]
         message["destination"]["path"]
+        message["destination"]["credentials"]
+        message["outcome"]["pulsar-topic"]
     except KeyError as ke:
         raise InvalidMessageException(
             f"Invalid transfer message: {ke} is a mandatory key"

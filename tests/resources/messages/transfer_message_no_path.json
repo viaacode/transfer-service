@@ -5,6 +5,10 @@
             "host": "domain"
         }
     },
+    "destination": {
+        "host": "tst-server",
+        "credentials": "vault-secret"
+    },
     "outcome": {
         "pulsar-topic": "topic"
     }

@@ -11,6 +11,9 @@ from paramiko import AutoAddPolicy, SSHClient, SSHException
 from retry import retry
 from viaa.configuration import ConfigParser
 from viaa.observability import logging
+from hvac.exceptions import InvalidPath, Forbidden
+
+from app.services.vault import VaultClient
 
 
 config_parser = ConfigParser()
@@ -119,19 +122,23 @@ def build_assemble_command(
     return shlex.join(assemble_command).replace("'&&'", "&&").replace("'>'", ">")
 
 
-def calculate_filename_part(file: str, idx: int) -> str:
+def calculate_filename_part(file: str, idx: int, directory: str = None) -> str:
     """Convenience method for calculating the filename of a part."""
-    return f"{file}.part{idx}"
+    part = f"{file}.part{idx}"
+    if directory:
+        return os.path.join(directory, part)
+    else:
+        return part
 
 
 class Transfer:
-    def __init__(self, message: dict):
+    def __init__(self, message: dict, vault_client: VaultClient):
         """Initialize a Transfer.
 
         Args:
             message: Contains the information of the source file and the destination
                 filename."""
-        self.domain = message["source"]["domain"]["name"]
+        self.domain = message["source"]["headers"].get("host")
         self.destination_path = message["destination"]["path"]
 
         self.dest_folder_dirname = os.path.dirname(self.destination_path)
@@ -143,9 +150,7 @@ class Transfer:
             self.dest_folder_dirname, dest_folder_tmp_basename
         )
 
-        bucket = message["source"]["bucket"]["name"]
-        key = message["source"]["object"]["key"]
-        self.source_url = f"http://{config['source']['swarmurl']}/{bucket}/{key}"
+        self.source_url = message["source"]["url"]
         self.size_in_bytes = 0
 
         # SSH client
@@ -153,15 +158,28 @@ class Transfer:
         # SFTP client
         self.sftp = None
 
+        self.remote_server_host = message["destination"]["host"]
+
+        secret_path = message["destination"]["credentials"]
+        try:
+            vault_client.fetch_secret(secret_path)
+        except (InvalidPath, Forbidden) as vault_error:
+            raise TransferException(
+                f"Can not retrieve secret for path: '{secret_path}'. Error: '{vault_error}'"
+            )
+
+        self.host_username = vault_client.get_username(secret_path)
+        self.host_password = vault_client.get_password(secret_path)
+
     def _init_remote_client(self):
         # SSH client
         self.remote_client = SSHClient()
         self.remote_client.set_missing_host_key_policy(AutoAddPolicy())
         self.remote_client.connect(
-            dest_conf["host"],
+            self.remote_server_host,
             port=22,
-            username=dest_conf["user"],
-            password=dest_conf["password"],
+            username=self.host_username,
+            password=self.host_password,
         )
         # SFTP client
         self.sftp = self.remote_client.open_sftp()
@@ -193,10 +211,10 @@ class Transfer:
             try:
                 remote_client.set_missing_host_key_policy(AutoAddPolicy())
                 remote_client.connect(
-                    dest_conf["host"],
+                    self.remote_server_host,
                     port=22,
-                    username=dest_conf["user"],
-                    password=dest_conf["password"],
+                    username=self.host_username,
+                    password=self.host_password,
                 )
                 # Execute the cURL command and examine results
                 _stdin, stdout, stderr = remote_client.exec_command(curl_cmd)
@@ -365,9 +383,8 @@ class Transfer:
         parts = calculate_ranges(int(self.size_in_bytes), NUMBER_PARTS)
         threads = []
         for idx, part in enumerate(parts):
-            dest_file_part_full = os.path.join(
-                self.dest_folder_tmp_dirname,
-                calculate_filename_part(self.dest_file_basename, idx),
+            dest_file_part_full = calculate_filename_part(
+                self.dest_file_basename, idx, directory=self.dest_folder_tmp_dirname
             )
             thread = threading.Thread(
                 target=self._transfer_part,
@@ -409,20 +426,22 @@ class Transfer:
             _ = stdout.readlines()
             _ = stderr.readlines()
 
-            self.sftp.chdir(self.dest_folder_tmp_dirname)
+            self.dest_file_tmp_filename = os.path.join(
+                self.dest_folder_tmp_dirname, self.dest_file_tmp_basename
+            )
 
             # Check if file has the correct size
-            file_attrs = self.sftp.stat(self.dest_file_tmp_basename)
+            file_attrs = self.sftp.stat(self.dest_file_tmp_filename)
             if file_attrs.st_size != int(self.size_in_bytes):
                 log.error(
                     f"Size of assembled file: {file_attrs.st_size}, expected size: {self.size_in_bytes}",
                     source_url=self.source_url,
-                    destination_basename=self.dest_file_tmp_basename,
+                    destination_filename=self.dest_file_tmp_filename,
                 )
                 raise TransferException
             # Rename and move file destination folder
             self.sftp.rename(
-                os.path.join(self.dest_folder_tmp_dirname, self.dest_file_tmp_basename),
+                self.dest_file_tmp_filename,
                 self.destination_path,
             )
             # Touch the file so MH picks it up
@@ -433,7 +452,11 @@ class Transfer:
             for idx in range(NUMBER_PARTS):
                 try:
                     self.sftp.remove(
-                        calculate_filename_part(self.dest_file_basename, idx)
+                        calculate_filename_part(
+                            self.dest_file_basename,
+                            idx,
+                            directory=self.dest_folder_tmp_dirname,
+                        )
                     )
                 except FileNotFoundError:
                     # Only delete parts that exist

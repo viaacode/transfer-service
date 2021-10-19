@@ -2,15 +2,20 @@
 # -*- coding: utf-8 -*-
 
 import functools
+import json
 import threading
 
+from pulsar import ConnectError as PulsarConnectError
 from pika.exceptions import AMQPConnectionError
 from viaa.configuration import ConfigParser
 from viaa.observability import logging
 
+from app.helpers.events import create_event
 from app.helpers.message_parser import parse_validate_json, InvalidMessageException
 from app.helpers.transfer import TransferPartException, TransferException, Transfer
 from app.services.rabbit import RabbitClient
+from app.services.pulsar import PulsarClient
+from app.services.vault import VaultClient
 
 
 class EventListener:
@@ -24,6 +29,8 @@ class EventListener:
         except AMQPConnectionError as error:
             self.log.error("Connection to RabbitMQ failed.")
             raise error
+        self.pulsar_client = PulsarClient()
+        self.vault_client = VaultClient()
 
     def ack_message(self, channel, delivery_tag):
         if channel.is_open:
@@ -53,14 +60,33 @@ class EventListener:
 
         # Start the transfer
         try:
-            Transfer(message).transfer()
-        except (TransferPartException, TransferException, OSError):
-            self.log.error("Transfer failed")
+            Transfer(message, self.vault_client).transfer()
+        except (TransferPartException, TransferException, OSError) as transfer_error:
+            self.log.error(f"Transfer failed - {transfer_error}")
             cb_nack = functools.partial(self.nack_message, channel, delivery_tag)
             self.rabbit_client.connection.add_callback_threadsafe(cb_nack)
+            # Send outcome
+            try:
+                event = create_event(
+                    message, f"Transfer failed - {transfer_error}", "Fail"
+                )
+                self.pulsar_client.produce_event(
+                    message["outcome"]["pulsar-topic"], json.dumps(event)
+                )
+            except PulsarConnectError:
+                raise
         else:
             cb_ack = functools.partial(self.ack_message, channel, delivery_tag)
             self.rabbit_client.connection.add_callback_threadsafe(cb_ack)
+            # Send outcome
+            try:
+                event = create_event(message, "Transfer successful", "Success")
+                self.pulsar_client.produce_event(
+                    message["outcome"]["pulsar-topic"],
+                    json.dumps(event),
+                )
+            except PulsarConnectError:
+                raise
 
     def handle_message(self, channel, method, properties, body):
         """Main method that will handle the incoming messages.
@@ -108,3 +134,5 @@ class EventListener:
         self.rabbit_client.connection.process_data_events()
         # Close the RabbitMQ connection
         self.rabbit_client.connection.close()
+        # Close the Pulsar producer(s)
+        self.pulsar_client.close()

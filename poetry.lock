@@ -246,6 +246,26 @@ url = "http://do-prd-mvn-01.do.viaa.be:8081/repository/pypi-all/simple"
 reference = "meemoo"
 
 [[package]]
+name = "hvac"
+version = "0.11.2"
+description = "HashiCorp Vault API client"
+category = "main"
+optional = false
+python-versions = ">=2.7"
+
+[package.dependencies]
+requests = ">=2.21.0"
+six = ">=1.5.0"
+
+[package.extras]
+parser = ["pyhcl (>=0.3.10)"]
+
+[package.source]
+type = "legacy"
+url = "http://do-prd-mvn-01.do.viaa.be:8081/repository/pypi-all/simple"
+reference = "meemoo"
+
+[[package]]
 name = "idna"
 version = "2.10"
 description = "Internationalized Domain Names in Applications (IDNA)"
@@ -402,6 +422,28 @@ importlib-metadata = {version = ">=0.12", markers = "python_version < \"3.8\""}
 
 [package.extras]
 dev = ["pre-commit", "tox"]
+
+[package.source]
+type = "legacy"
+url = "http://do-prd-mvn-01.do.viaa.be:8081/repository/pypi-all/simple"
+reference = "meemoo"
+
+[[package]]
+name = "pulsar-client"
+version = "2.8.1"
+description = "Apache Pulsar Python client library"
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+certifi = "*"
+six = "*"
+
+[package.extras]
+all = ["apache-bookkeeper-client (>=4.9.2)", "fastavro (==0.24.0)", "grpcio (>=1.8.2,<1.28)", "prometheus-client", "protobuf (>=3.6.1)", "ratelimit"]
+avro = ["fastavro (==0.24.0)"]
+functions = ["apache-bookkeeper-client (>=4.9.2)", "grpcio (>=1.8.2,<1.28)", "prometheus-client", "protobuf (>=3.6.1)", "ratelimit"]
 
 [package.source]
 type = "legacy"
@@ -749,7 +791,7 @@ reference = "meemoo"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.6"
-content-hash = "66de1b8e993851e7e1c60a7c29a58750bcc107f149258770547a6f997d049ce7"
+content-hash = "505b378512db11cc576e521e1c813e375d79cd3e33b4da6ad9c4f8765b90169f"
 
 [metadata.files]
 appdirs = [
@@ -911,6 +953,10 @@ flake8 = [
     {file = "flake8-3.8.4-py2.py3-none-any.whl", hash = "sha256:749dbbd6bfd0cf1318af27bf97a14e28e5ff548ef8e5b1566ccfb25a11e7c839"},
     {file = "flake8-3.8.4.tar.gz", hash = "sha256:aadae8761ec651813c24be05c6f7b4680857ef6afaae4651a4eccaef97ce6c3b"},
 ]
+hvac = [
+    {file = "hvac-0.11.2-py2.py3-none-any.whl", hash = "sha256:3e8a34804b1e20954a2b4991cc13ed9c09b32e50dadd9d3438224481150f6568"},
+    {file = "hvac-0.11.2.tar.gz", hash = "sha256:f905c59d32d88d3f67571fe5a8a78de4659e04798ad809de439f667247d13626"},
+]
 idna = [
     {file = "idna-2.10-py2.py3-none-any.whl", hash = "sha256:b97d804b1e9b523befed77c48dacec60e6dcb0b5391d57af6a65a312a90648c0"},
     {file = "idna-2.10.tar.gz", hash = "sha256:b307872f855b18632ce0c21c5e45be78c0ea7ae4c15c828c20788b26921eb3f6"},
@@ -950,6 +996,18 @@ pika = [
 pluggy = [
     {file = "pluggy-0.13.1-py2.py3-none-any.whl", hash = "sha256:966c145cd83c96502c3c3868f50408687b38434af77734af1e9ca461a4081d2d"},
     {file = "pluggy-0.13.1.tar.gz", hash = "sha256:15b2acde666561e1298d71b523007ed7364de07029219b604cf808bfa1c765b0"},
+]
+pulsar-client = [
+    {file = "pulsar_client-2.8.1-cp27-cp27m-macosx_10_12_x86_64.whl", hash = "sha256:49cc4ef437750354a1f502663b8ef10bf0f6ec4740cc637b810198b2bf5e723c"},
+    {file = "pulsar_client-2.8.1-cp27-cp27m-macosx_10_13_x86_64.whl", hash = "sha256:8dca5deee963b865b0795515739dfb06041aa5dc624b78dbc014668a5b21a02a"},
+    {file = "pulsar_client-2.8.1-cp27-cp27m-manylinux1_x86_64.whl", hash = "sha256:347e0d3c9cd3c5c836cbd66b433b50b71f49cca28c040a70243a28c4c06a7695"},
+    {file = "pulsar_client-2.8.1-cp27-cp27mu-manylinux1_x86_64.whl", hash = "sha256:0070171719530136e6b858f2ef49311b590f9cfa6c31059312b7f20a388b7e55"},
+    {file = "pulsar_client-2.8.1-cp35-cp35m-manylinux1_x86_64.whl", hash = "sha256:4051ea99c51c5469b120899fac4b5f474b646bae699968dd71b07d912b3bdf6c"},
+    {file = "pulsar_client-2.8.1-cp36-cp36m-manylinux1_x86_64.whl", hash = "sha256:0eede87530610fedec2ef199452f37bc71273383e2f8550bd22f2c16cfd48d6a"},
+    {file = "pulsar_client-2.8.1-cp37-cp37m-macosx_10_12_x86_64.whl", hash = "sha256:61e485636af602b2b76f3609659649d420ab804253e705ddfa00d6b327771679"},
+    {file = "pulsar_client-2.8.1-cp37-cp37m-macosx_10_13_x86_64.whl", hash = "sha256:1bddd1a5ed2d5430f5ec7aea3efbbf28d458175ad9f935db3ecb6a85c3e70cc3"},
+    {file = "pulsar_client-2.8.1-cp37-cp37m-manylinux1_x86_64.whl", hash = "sha256:4e0c3d1454359f677df932eb5e831a64688723874c346cf4558376835c1f133d"},
+    {file = "pulsar_client-2.8.1-cp38-cp38-manylinux1_x86_64.whl", hash = "sha256:cd1d7c9515a904d26f7219ea4f658b7d60279a94d5afdb90b7fa4cb217d766b5"},
 ]
 py = [
     {file = "py-1.10.0-py2.py3-none-any.whl", hash = "sha256:3b80836aa6d1feeaa108e046da6423ab8f6ceda6468545ae8d02d9d58d18818a"},
