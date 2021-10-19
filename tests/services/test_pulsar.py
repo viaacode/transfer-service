@@ -21,18 +21,22 @@ class TestPulsarClient:
         PulsarClient()
         client.assert_called_once_with("pulsar://pulsar_host:6650")
 
-    def test_produce_event(self, pulsar_client):
-        """Produce an event.
+    @patch("app.services.pulsar.PulsarBinding")
+    def test_produce_event(self, pulsar_binding_mock, pulsar_client):
+        """Produce a cloudevent.
 
         Producer for the topic doesn't exist yet.
         """
+        event = MagicMock()
+        message = MagicMock()
+        pulsar_binding_mock.to_protocol.return_value = message
         assert len(pulsar_client.producers) == 0
 
         topic = "tst-topic"
-        pulsar_client.produce_event(topic, "event")
+        pulsar_client.produce_event(topic, event)
         assert topic in pulsar_client.producers
         pulsar_client.producers[topic].send.assert_called_once_with(
-            "event".encode("utf8")
+            message.data, message.attributes, event.get_event_time_as_int()
         )
 
     def test_close(self, pulsar_client):

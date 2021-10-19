@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from cloudevents.events import EventOutcome
 
 from app.helpers.events import create_event
-from app.helpers.message_parser import parse_validate_json
 from tests.resources import (
     transfer_message,
 )
@@ -10,12 +10,12 @@ from tests.resources import (
 
 def test_create_event():
     """Check if the correct event is created."""
-    transfer_message_json = parse_validate_json(transfer_message)
-    event = create_event(transfer_message_json, "message", "outcome")
-    assert event == {
+    event = create_event(transfer_message, "message", EventOutcome.WARNING, "cor_id")
+    assert event._data == {
         "message": "message",
-        "outcome": "outcome",
-        "source": transfer_message_json["source"]["url"],
-        "destination": transfer_message_json["destination"]["path"],
-        "host": transfer_message_json["destination"]["host"],
+        "outcome": EventOutcome.WARNING,
+        "source": transfer_message["source"]["url"],
+        "destination": transfer_message["destination"]["path"],
+        "host": transfer_message["destination"]["host"],
     }
+    assert event.correlation_id == "cor_id"

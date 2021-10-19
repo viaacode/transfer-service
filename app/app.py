@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 
 import functools
-import json
 import threading
 
 from pulsar import ConnectError as PulsarConnectError
 from pika.exceptions import AMQPConnectionError
 from viaa.configuration import ConfigParser
 from viaa.observability import logging
+from cloudevents.events import EventOutcome
 
 from app.helpers.events import create_event
 from app.helpers.message_parser import (
@@ -73,13 +73,13 @@ class EventListener:
             self.rabbit_client.connection.add_callback_threadsafe(cb_nack)
             # Send outcome
             try:
-                event = create_event(
+                outgoing_event = create_event(
                     transfer_message,
                     f"Transfer failed - {transfer_error}",
-                    "Fail",
+                    EventOutcome.FAIL,
                 )
                 self.pulsar_client.produce_event(
-                    transfer_message["outcome"]["pulsar-topic"], json.dumps(event)
+                    transfer_message["outcome"]["pulsar-topic"], outgoing_event
                 )
             except PulsarConnectError:
                 raise
@@ -88,10 +88,12 @@ class EventListener:
             self.rabbit_client.connection.add_callback_threadsafe(cb_ack)
             # Send outcome
             try:
-                event = create_event(transfer_message, "Transfer successful", "Success")
+                outgoing_event = create_event(
+                    transfer_message, "Transfer successful", EventOutcome.SUCCESS
+                )
                 self.pulsar_client.produce_event(
                     transfer_message["outcome"]["pulsar-topic"],
-                    json.dumps(event),
+                    outgoing_event,
                 )
             except PulsarConnectError:
                 raise
