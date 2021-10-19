@@ -3,13 +3,15 @@
 
 import json
 
+from cloudevents.events import AMQPBinding, Event
+
 
 class InvalidMessageException(Exception):
     def __init__(self, message):
         self.message = message
 
 
-def _validate_json(message: dict):
+def validate_transfer_message(message: dict) -> bool:
     """Validate if the message contains all the needed information.
 
     Args:
@@ -29,26 +31,25 @@ def _validate_json(message: dict):
         raise InvalidMessageException(
             f"Invalid transfer message: {ke} is a mandatory key"
         )
+    return True
 
 
-def parse_validate_json(message: bytes) -> dict:
-    """Parse and validate the JSON message.
+def parse_incoming_message(properties, body: bytes) -> Event:
+    """Parse the incoming message as a cloudevent.
 
     Args:
-        message: The JSON message.
+        properties: The RabbitMQ properties.
+        body: The JSON message.
 
     Returns:
-        The parsed message as a dict.
+        The incoming message as a cloudevent.
 
     Raises:
-        InvalidMessageException: If the message is not valid JSON
-            or if the JSON misses mandatory keys.
+        InvalidMessageException: If the message is not valid JSON.
     """
     try:
-        json_data = json.loads(message)
+        incoming_event = AMQPBinding.from_protocol(properties, body)
     except json.decoder.JSONDecodeError as jde:
         raise InvalidMessageException(f'Not valid JSON: "{jde}"')
 
-    _validate_json(json_data)
-
-    return json_data
+    return incoming_event
