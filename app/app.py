@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import json
 import functools
 import threading
 
@@ -56,7 +57,7 @@ class EventListener:
         # Parse and validate the message
         try:
             incoming_event = parse_incoming_message(properties, body)
-            transfer_message: dict = incoming_event.get_data()
+            transfer_message: dict = json.loads(incoming_event._data)
             validate_transfer_message(transfer_message)
         except InvalidMessageException as ime:
             self.log.warning(ime.message)
@@ -77,6 +78,7 @@ class EventListener:
                     transfer_message,
                     f"Transfer failed - {transfer_error}",
                     EventOutcome.FAIL,
+                    incoming_event.correlation_id,
                 )
                 self.pulsar_client.produce_event(
                     transfer_message["outcome"]["pulsar-topic"], outgoing_event
@@ -89,7 +91,10 @@ class EventListener:
             # Send outcome
             try:
                 outgoing_event = create_event(
-                    transfer_message, "Transfer successful", EventOutcome.SUCCESS
+                    transfer_message,
+                    "Transfer successful",
+                    EventOutcome.SUCCESS,
+                    incoming_event.correlation_id,
                 )
                 self.pulsar_client.produce_event(
                     transfer_message["outcome"]["pulsar-topic"],

@@ -30,7 +30,9 @@ class PulsarClient:
 
         msg = PulsarBinding.to_protocol(event, CEMessageMode.STRUCTURED)
         self.producers[topic].send(
-            msg.data, msg.attributes, event.get_event_time_as_int()
+            msg.data,
+            properties=msg.attributes,
+            event_timestamp=event.get_event_time_as_int(),
         )
 
     def close(self):
