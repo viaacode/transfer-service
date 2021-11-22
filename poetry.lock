@@ -327,8 +327,8 @@ reference = "meemoo"
 
 [[package]]
 name = "meemoo-cloudevents"
-version = "0.1.0rc1"
-description = "meemoo Chassis"
+version = "0.1.0rc2"
+description = "Meemoo's implementation of CloudEvents"
 category = "main"
 optional = false
 python-versions = "*"
@@ -804,7 +804,7 @@ reference = "meemoo"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.6"
-content-hash = "876fd5a34edc13d7d58c7a31ce0f0e1486b797d345b9f2871642b467f3b050be"
+content-hash = "93064d135ffb72b13cf441983dd44765b4155a237ebdac0bfbf7a439ab3a05ef"
 
 [metadata.files]
 appdirs = [
@@ -987,8 +987,8 @@ mccabe = [
     {file = "mccabe-0.6.1.tar.gz", hash = "sha256:dd8d182285a0fe56bace7f45b5e7d1a6ebcbf524e8f3bd87eb0f125271b8831f"},
 ]
 meemoo-cloudevents = [
-    {file = "meemoo-cloudevents-0.1.0rc1.tar.gz", hash = "md5:582a23c8234899e049c11c6e024a7427"},
-    {file = "meemoo_cloudevents-0.1.0rc1-py3-none-any.whl", hash = "md5:e5e1c248a0a14ff7f137ea72a5059afb"},
+    {file = "meemoo-cloudevents-0.1.0rc2.tar.gz", hash = "md5:e08684aff5fff3b03a5181f0f8abd591"},
+    {file = "meemoo_cloudevents-0.1.0rc2-py3-none-any.whl", hash = "md5:17c3b776d66795fada31c99cce1e0464"},
 ]
 mypy-extensions = [
     {file = "mypy_extensions-0.4.3-py2.py3-none-any.whl", hash = "sha256:090fedd75945a69ae91ce1303b5824f428daf5a028d2f6ab8a299250a846f15d"},

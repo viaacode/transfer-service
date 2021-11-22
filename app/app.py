@@ -57,7 +57,7 @@ class EventListener:
         # Parse and validate the message
         try:
             incoming_event = parse_incoming_message(properties, body)
-            transfer_message: dict = json.loads(incoming_event._data)
+            transfer_message: dict = json.loads(incoming_event.get_data())
             validate_transfer_message(transfer_message)
         except InvalidMessageException as ime:
             self.log.warning(ime.message)

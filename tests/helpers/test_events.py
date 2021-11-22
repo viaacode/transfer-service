@@ -11,7 +11,7 @@ from tests.resources import (
 def test_create_event():
     """Check if the correct event is created."""
     event = create_event(transfer_message, "message", EventOutcome.WARNING, "cor_id")
-    assert event._data == {
+    assert event.get_data() == {
         "message": "message",
         "outcome": EventOutcome.WARNING,
         "source": transfer_message["source"]["url"],
