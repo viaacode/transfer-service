@@ -1,1 +1,1 @@
-APP_NAME = "/sipin/transfer-service"
+APP_NAME = "transfer-service"
