@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from unittest.mock import patch, MagicMock
 import pytest
 
-from app.helpers.message_parser import parse_validate_json, InvalidMessageException
+from app.helpers.message_parser import (
+    parse_incoming_message,
+    validate_transfer_message,
+    InvalidMessageException,
+)
 from tests.resources import (
     transfer_message,
     transfer_message_empty,
@@ -31,26 +36,24 @@ INVALID_JSON_MESSAGES = [
 ]
 
 
-def test_parse_validate_json():
-    msg_json = parse_validate_json(transfer_message)
-    assert msg_json["source"]["url"] == "http://host:port/path/"
-    assert msg_json["source"]["headers"] == {"host": "domain"}
-    assert msg_json["destination"]["host"] == "tst-server"
-    assert msg_json["destination"]["path"] == "/path/to/folder/pid.mxf"
-    assert msg_json["destination"]["credentials"] == "vault-secret"
-    assert msg_json["outcome"]["pulsar-topic"] == "topic"
+@patch("app.helpers.message_parser.AMQPBinding")
+def test_parse_incoming_message(amqp_binding_mock):
+    event_mock = MagicMock()
+    amqp_binding_mock.from_protocol.return_value = event_mock
+    properties_mock = MagicMock()
+
+    returned_event = parse_incoming_message(properties_mock, b"body")
+    assert returned_event == event_mock
+    amqp_binding_mock.from_protocol.assert_called_once_with(properties_mock, b"body")
 
 
-def test_parse_validate_json_decode_error():
-    with pytest.raises(InvalidMessageException) as ime:
-        parse_validate_json("nojson")
-    error_str = 'Not valid JSON: "Expecting value: line 1 column 1 (char 0)"'
-    assert ime.value.message == error_str
+def test_validate_transfer_message():
+    assert validate_transfer_message(transfer_message)
 
 
 @pytest.mark.parametrize("json, missing_key", INVALID_JSON_MESSAGES)
-def test_parse_validate_json_invalid(json, missing_key):
+def test_validate_transfer_message_invalid(json, missing_key):
     with pytest.raises(InvalidMessageException) as ime:
-        parse_validate_json(json)
+        validate_transfer_message(json)
     error_str = f"Invalid transfer message: '{missing_key}' is a mandatory key"
     assert ime.value.message == error_str

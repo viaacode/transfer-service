@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import functools
 import json
+import functools
 import threading
 
 from pulsar import ConnectError as PulsarConnectError
 from pika.exceptions import AMQPConnectionError
 from viaa.configuration import ConfigParser
 from viaa.observability import logging
+from cloudevents.events import EventOutcome
 
 from app.helpers.events import create_event
-from app.helpers.message_parser import parse_validate_json, InvalidMessageException
+from app.helpers.message_parser import (
+    validate_transfer_message,
+    parse_incoming_message,
+    InvalidMessageException,
+)
 from app.helpers.transfer import TransferPartException, TransferException, Transfer
 from app.services.rabbit import RabbitClient
 from app.services.pulsar import PulsarClient
@@ -48,10 +53,12 @@ class EventListener:
             # TODO: handle properly
             pass
 
-    def do_work(self, channel, delivery_tag, body):
+    def do_work(self, channel, delivery_tag, properties, body):
         # Parse and validate the message
         try:
-            message = parse_validate_json(body)
+            incoming_event = parse_incoming_message(properties, body)
+            transfer_message: dict = json.loads(incoming_event.get_data())
+            validate_transfer_message(transfer_message)
         except InvalidMessageException as ime:
             self.log.warning(ime.message)
             cb_nack = functools.partial(self.nack_message, channel, delivery_tag)
@@ -60,18 +67,21 @@ class EventListener:
 
         # Start the transfer
         try:
-            Transfer(message, self.vault_client).transfer()
+            Transfer(transfer_message, self.vault_client).transfer()
         except (TransferPartException, TransferException, OSError) as transfer_error:
             self.log.error(f"Transfer failed - {transfer_error}")
             cb_nack = functools.partial(self.nack_message, channel, delivery_tag)
             self.rabbit_client.connection.add_callback_threadsafe(cb_nack)
             # Send outcome
             try:
-                event = create_event(
-                    message, f"Transfer failed - {transfer_error}", "Fail"
+                outgoing_event = create_event(
+                    transfer_message,
+                    f"Transfer failed - {transfer_error}",
+                    EventOutcome.FAIL,
+                    incoming_event.correlation_id,
                 )
                 self.pulsar_client.produce_event(
-                    message["outcome"]["pulsar-topic"], json.dumps(event)
+                    transfer_message["outcome"]["pulsar-topic"], outgoing_event
                 )
             except PulsarConnectError:
                 raise
@@ -80,10 +90,15 @@ class EventListener:
             self.rabbit_client.connection.add_callback_threadsafe(cb_ack)
             # Send outcome
             try:
-                event = create_event(message, "Transfer successful", "Success")
+                outgoing_event = create_event(
+                    transfer_message,
+                    "Transfer successful",
+                    EventOutcome.SUCCESS,
+                    incoming_event.correlation_id,
+                )
                 self.pulsar_client.produce_event(
-                    message["outcome"]["pulsar-topic"],
-                    json.dumps(event),
+                    transfer_message["outcome"]["pulsar-topic"],
+                    outgoing_event,
                 )
             except PulsarConnectError:
                 raise
@@ -110,7 +125,7 @@ class EventListener:
         self.threads = [t for t in self.threads if not t.handled]
 
         thread = threading.Thread(
-            target=self.do_work, args=(channel, method.delivery_tag, body)
+            target=self.do_work, args=(channel, method.delivery_tag, properties, body)
         )
         thread.handled = False
         thread.start()

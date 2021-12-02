@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
-from unittest.mock import patch
+import json
+from unittest.mock import patch, MagicMock
 
 import pytest
+from cloudevents.events import EventOutcome
 
 from app.helpers.message_parser import InvalidMessageException
 from app.app import EventListener
@@ -17,10 +18,10 @@ def event_listener(rabbit_client_mock, vault_client_mock, pulsar_client_mock):
     return EventListener()
 
 
-@patch("app.app.parse_validate_json", side_effect=InvalidMessageException("invalid"))
+@patch("app.app.parse_incoming_message", side_effect=InvalidMessageException("invalid"))
 @patch("app.app.Transfer")
 def test_do_work_invalid_message(transfer_mock, parse_mock, event_listener, caplog):
-    event_listener.do_work(None, None, None)
+    event_listener.do_work(None, None, None, None)
     assert "invalid" in caplog.messages
     rabbit_client_mock = event_listener.rabbit_client
     assert rabbit_client_mock.connection.add_callback_threadsafe.call_count == 1
@@ -28,10 +29,16 @@ def test_do_work_invalid_message(transfer_mock, parse_mock, event_listener, capl
 
 
 @patch("app.app.Transfer")
-@patch("app.app.parse_validate_json")
+@patch("app.app.validate_transfer_message")
+@patch("app.app.parse_incoming_message")
 @patch("app.app.create_event")
 def test_do_work(
-    create_event_mock, parse_validate_json_mock, transfer_mock, event_listener, caplog
+    create_event_mock,
+    parse_incoming_message_mock,
+    validate_transfer_message_mock,
+    transfer_mock,
+    event_listener,
+    caplog,
 ):
     """Successfully finish do_work:
 
@@ -41,19 +48,26 @@ def test_do_work(
     - Create a "successful transfer" event
     - Send that event on a Pulsar topic
     """
-    message = {}
     # Mock parsed incoming message
-    parse_validate_json_mock.return_value = {"outcome": {"pulsar-topic": "topic"}}
+    transfer_message = {"outcome": {"pulsar-topic": "topic"}}
+    transfer_message_bytes = json.dumps(transfer_message).encode("utf8")
+    incoming_event = MagicMock()
+    incoming_event.get_data.return_value = transfer_message_bytes
+    parse_incoming_message_mock.return_value = incoming_event
+    properties = MagicMock()
     # Mock returned event
-    create_event_mock.return_value = {}
-    event_listener.do_work(None, None, message)
+    outgoing_event = MagicMock()
+    create_event_mock.return_value = outgoing_event
+    event_listener.do_work(None, None, properties, transfer_message_bytes)
     # Parse message
-    parse_validate_json_mock.assert_called_once_with(message)
+    parse_incoming_message_mock.assert_called_once_with(
+        properties, transfer_message_bytes
+    )
+    # Validate message
+    validate_transfer_message_mock.assert_called_once_with(transfer_message)
 
     # Transfer
-    transfer_mock.assert_called_once_with(
-        parse_validate_json_mock(), event_listener.vault_client
-    )
+    transfer_mock.assert_called_once_with(transfer_message, event_listener.vault_client)
     transfer_mock().transfer.assert_called_once_with()
 
     # Rabbit
@@ -65,8 +79,11 @@ def test_do_work(
 
     # Check the Pulsar event
     create_event_mock.assert_called_once_with(
-        parse_validate_json_mock(), "Transfer successful", "Success"
+        transfer_message,
+        "Transfer successful",
+        EventOutcome.SUCCESS,
+        incoming_event.correlation_id,
     )
 
     # Check is message is send
-    pulsar_client_mock.produce_event.assert_called_once_with("topic", "{}")
+    pulsar_client_mock.produce_event.assert_called_once_with("topic", outgoing_event)
