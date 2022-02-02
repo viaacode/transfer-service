@@ -61,7 +61,12 @@ def calculate_ranges(size_bytes: int, number_parts: int) -> List[str]:
 
 
 def build_curl_command(
-    destination: str, source_url: str, s3_domain: str, part_range: str
+    destination: str,
+    source_url: str,
+    s3_domain: str,
+    part_range: str,
+    source_username: str = None,
+    source_password: str = None,
 ) -> str:
     """Build the cURL command.
 
@@ -75,6 +80,8 @@ def build_curl_command(
         s3_domain: The S3 domain to pass as header.
         part_range: The range of the part to fetch in format "{x}-{y}"
             with x, y integers and x<=y.
+        source_username: The username for fetching the source file (optional).
+        source_password: The password for fetching the source file (optional).
 
     Returns:
         The cURL command shell-escaped
@@ -94,8 +101,10 @@ def build_curl_command(
         "-s",
         "-o",
         destination,
-        source_url,
     ]
+    if source_username and source_password:
+        command.extend(["-u", f"{source_username}:{source_password}"])
+    command.append(source_url)
     return shlex.join(command)
 
 
@@ -160,16 +169,33 @@ class Transfer:
 
         self.remote_server_host = message["destination"]["host"]
 
-        secret_path = message["destination"]["credentials"]
+        # Credentials (secret) for destination
+        secret_path_destination = message["destination"]["credentials"]
         try:
-            vault_client.fetch_secret(secret_path)
+            vault_client.fetch_secret(secret_path_destination)
         except (InvalidPath, Forbidden) as vault_error:
             raise TransferException(
-                f"Can not retrieve secret for path: '{secret_path}'. Error: '{vault_error}'"
+                f"Can not retrieve secret for path: '{secret_path_destination}'. Error: '{vault_error}'"
             )
 
-        self.host_username = vault_client.get_username(secret_path)
-        self.host_password = vault_client.get_password(secret_path)
+        self.host_username = vault_client.get_username(secret_path_destination)
+        self.host_password = vault_client.get_password(secret_path_destination)
+
+        # Credentials (secret) for source if provided
+        try:
+            secret_path_source = message["source"]["credentials"]
+        except KeyError:
+            self.source_username = None
+            self.source_password = None
+        else:
+            try:
+                vault_client.fetch_secret(secret_path_source)
+            except (InvalidPath, Forbidden) as vault_error:
+                raise TransferException(
+                    f"Can not retrieve secret for path: '{secret_path_source}'. Error: '{vault_error}'"
+                )
+            self.source_username = vault_client.get_username(secret_path_source)
+            self.source_password = vault_client.get_password(secret_path_source)
 
     def _init_remote_client(self):
         # SSH client
@@ -206,6 +232,8 @@ class Transfer:
             self.source_url,
             self.domain,
             part_range,
+            source_username=self.source_username,
+            source_password=self.source_password,
         )
         with SSHClient() as remote_client:
             try:

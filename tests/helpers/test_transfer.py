@@ -54,6 +54,23 @@ def test_build_curl_command():
     )
 
 
+def test_build_curl_command_credentials():
+    dest = "dest file"
+    src = "source file"
+    domain = "S3 domain"
+    r = "0-100"
+    username = "user"
+    password = "password"
+    w_params = "%{http_code},time: %{time_total}s,size: %{size_download} bytes,speed: %{speed_download}b/s"
+    curl_command = build_curl_command(
+        dest, src, domain, r, source_username=username, source_password=password
+    )
+    assert (
+        curl_command
+        == f"curl -w '{w_params}' -L -H 'host: {domain}' -H 'range: bytes={r}' -r {r} -S -s -o '{dest}' -u {username}:{password} '{src}'"
+    )
+
+
 def test_calculate_filename_part():
     assert calculate_filename_part("file.mxf", 0) == "file.mxf.part0"
 
@@ -127,7 +144,12 @@ class TestTransfer:
 
         # Check if curl command gets called with the correct arguments
         build_curl_command_mock.assert_called_once_with(
-            "dest", "http://url/bucket/file.mxf", "domain", "0-100"
+            "dest",
+            "http://url/bucket/file.mxf",
+            "domain",
+            "0-100",
+            source_username=transfer.source_username,
+            source_password=transfer.source_password,
         )
 
         assert client_mock.exec_command() == (stdin_mock, stdout_mock, stderr_mock)
@@ -512,6 +534,8 @@ class TestTransfer:
         assert transfer.dest_folder_tmp_dirname == "s3-transfer-test/.file.mxf"
         assert transfer.source_url == "http://url/bucket/file.mxf"
         assert transfer.size_in_bytes == 0
+        assert not transfer.source_username
+        assert not transfer.source_password
 
         transfer.transfer()
         # Initialisation of the remote client
@@ -537,3 +561,18 @@ class TestTransfer:
         )
 
         assert transfer.size_in_bytes == 100
+
+    def test_transfer_from_message_credentials(self, transfer_message):
+        """
+        If the transfer message contains source credentials,
+        they'll get fetched from the Vault.
+        """
+        # Add source credentials to message
+        transfer_message["source"]["credentials"] = "creds"
+        # Mock the Vault
+        vault_mock = MagicMock()
+        vault_mock.get_username.return_value = "source_user"
+        vault_mock.get_password.return_value = "source_pass"
+        transfer = Transfer(transfer_message, vault_mock)
+        assert transfer.source_username == "source_user"
+        assert transfer.source_password == "source_pass"
