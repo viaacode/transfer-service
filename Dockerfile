@@ -7,7 +7,7 @@ WORKDIR /app
 
 # Install curl
 RUN apt-get update
-RUN apt-get install -y --no-install-recommends curl
+RUN apt-get install -y --no-install-recommends curl openssh-client
 
 # Install Poetry
 RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | POETRY_HOME=/opt/poetry python && \
