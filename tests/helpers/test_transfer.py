@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import pytest
+from ftplib import error_perm
+from socket import gaierror
 from unittest.mock import MagicMock, patch
+from urllib.parse import urlparse
 
 from hvac.exceptions import InvalidPath, Forbidden
 from paramiko import SSHException
@@ -233,6 +236,31 @@ class TestTransfer:
         log_record = caplog.records[0]
         assert log_record.level == "error"
         assert log_record.message == "Failed to get size of file on Castor"
+
+    @patch("app.helpers.transfer.FTP")
+    def test_fetch_size_ftp(self, ftp_mock, transfer):
+        transfer.source_url = transfer.source_url.replace("http", "ftp")
+        transfer.source_username = "user"
+        transfer.source_password = "pass"
+        ftp_client = ftp_mock().__enter__()
+        ftp_client.size.return_value = 2000
+        size = transfer._fetch_size()
+
+        ftp_client.login.assert_called_once_with(user="user", passwd="pass")
+        assert size == 2000
+
+    @patch("app.helpers.transfer.FTP")
+    @pytest.mark.parametrize("error", [gaierror, error_perm])
+    def test_fetch_size_ftp_error(self, ftp_mock, transfer, error):
+        transfer.source_url = transfer.source_url.replace("http", "ftp")
+        ftp_mock.side_effect = error
+        with pytest.raises(TransferException):
+            transfer._fetch_size()
+
+    def test_fetch_size_unknown_protocol(self, transfer):
+        transfer.source_url = transfer.source_url.replace("http", "ldap")
+        with pytest.raises(ValueError):
+            transfer._fetch_size()
 
     def test_prepare_target_transfer(self, transfer):
         """File does not exist and folder is created"""

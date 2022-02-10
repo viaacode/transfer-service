@@ -4,7 +4,10 @@ import os
 import shlex
 import threading
 import time
+from socket import gaierror
+from ftplib import FTP, error_perm
 from typing import List
+from urllib.parse import urlparse
 
 import requests
 from paramiko import AutoAddPolicy, SSHClient, SSHException
@@ -286,7 +289,9 @@ class Transfer:
     def _fetch_size(self) -> int:
         """Fetch the size of the file on Castor.
 
-        The size is in the "content-length" response header.
+        Depending on the protocol the logic is different:
+            HTTP(s): The size is in the "content-length" response header.
+            FTP: Open a FTP connection to retrieve the size of the file.
 
         Returns:
             The size of the file in bytes.
@@ -294,20 +299,36 @@ class Transfer:
         Raises:
             TransferException: If it was not possible to get the size of the file,
                 e.g. a 404.
+            ValueError: If the source url contains an unknown protocol.
         """
 
-        size_in_bytes = requests.head(
-            self.source_url,
-            allow_redirects=True,
-            headers={"host": self.domain, "Accept-Encoding": "identity"},
-        ).headers.get("content-length", None)
+        source_url_parsed = urlparse(self.source_url)
+        if source_url_parsed.scheme in ("http", "https"):
+            size_in_bytes = requests.head(
+                self.source_url,
+                allow_redirects=True,
+                headers={"host": self.domain, "Accept-Encoding": "identity"},
+            ).headers.get("content-length", None)
 
-        if not size_in_bytes:
-            log.error(
-                "Failed to get size of file on Castor", source_url=self.source_url
-            )
-            raise TransferException
-
+            if not size_in_bytes:
+                log.error(
+                    "Failed to get size of file on Castor", source_url=self.source_url
+                )
+                raise TransferException
+        elif source_url_parsed.scheme in ("ftp",):
+            try:
+                with FTP(
+                    host=source_url_parsed.netloc,
+                ) as ftp:
+                    ftp.login(
+                        user=self.source_username,
+                        passwd=self.source_password,
+                    )
+                    size_in_bytes = ftp.size(source_url_parsed.path)
+            except (gaierror, error_perm) as e:
+                raise TransferException(f"Failed to get size of file on the FTP: {e}")
+        else:
+            raise ValueError(f"Protocol not supported: {self.source_url}")
         return size_in_bytes
 
     def _check_free_space(self):
