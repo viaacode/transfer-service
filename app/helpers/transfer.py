@@ -4,7 +4,10 @@ import os
 import shlex
 import threading
 import time
+from socket import gaierror
+from ftplib import FTP, error_perm
 from typing import List
+from urllib.parse import urlparse
 
 import requests
 from paramiko import AutoAddPolicy, SSHClient, SSHException
@@ -61,7 +64,12 @@ def calculate_ranges(size_bytes: int, number_parts: int) -> List[str]:
 
 
 def build_curl_command(
-    destination: str, source_url: str, s3_domain: str, part_range: str
+    destination: str,
+    source_url: str,
+    s3_domain: str,
+    part_range: str,
+    source_username: str = None,
+    source_password: str = None,
 ) -> str:
     """Build the cURL command.
 
@@ -75,6 +83,8 @@ def build_curl_command(
         s3_domain: The S3 domain to pass as header.
         part_range: The range of the part to fetch in format "{x}-{y}"
             with x, y integers and x<=y.
+        source_username: The username for fetching the source file (optional).
+        source_password: The password for fetching the source file (optional).
 
     Returns:
         The cURL command shell-escaped
@@ -94,8 +104,10 @@ def build_curl_command(
         "-s",
         "-o",
         destination,
-        source_url,
     ]
+    if source_username and source_password:
+        command.extend(["-u", f"{source_username}:{source_password}"])
+    command.append(source_url)
     return shlex.join(command)
 
 
@@ -160,16 +172,33 @@ class Transfer:
 
         self.remote_server_host = message["destination"]["host"]
 
-        secret_path = message["destination"]["credentials"]
+        # Credentials (secret) for destination
+        secret_path_destination = message["destination"]["credentials"]
         try:
-            vault_client.fetch_secret(secret_path)
+            vault_client.fetch_secret(secret_path_destination)
         except (InvalidPath, Forbidden) as vault_error:
             raise TransferException(
-                f"Can not retrieve secret for path: '{secret_path}'. Error: '{vault_error}'"
+                f"Can not retrieve secret for path: '{secret_path_destination}'. Error: '{vault_error}'"
             )
 
-        self.host_username = vault_client.get_username(secret_path)
-        self.host_password = vault_client.get_password(secret_path)
+        self.host_username = vault_client.get_username(secret_path_destination)
+        self.host_password = vault_client.get_password(secret_path_destination)
+
+        # Credentials (secret) for source if provided
+        try:
+            secret_path_source = message["source"]["credentials"]
+        except KeyError:
+            self.source_username = None
+            self.source_password = None
+        else:
+            try:
+                vault_client.fetch_secret(secret_path_source)
+            except (InvalidPath, Forbidden) as vault_error:
+                raise TransferException(
+                    f"Can not retrieve secret for path: '{secret_path_source}'. Error: '{vault_error}'"
+                )
+            self.source_username = vault_client.get_username(secret_path_source)
+            self.source_password = vault_client.get_password(secret_path_source)
 
     def _init_remote_client(self):
         # SSH client
@@ -206,6 +235,8 @@ class Transfer:
             self.source_url,
             self.domain,
             part_range,
+            source_username=self.source_username,
+            source_password=self.source_password,
         )
         with SSHClient() as remote_client:
             try:
@@ -258,7 +289,9 @@ class Transfer:
     def _fetch_size(self) -> int:
         """Fetch the size of the file on Castor.
 
-        The size is in the "content-length" response header.
+        Depending on the protocol the logic is different:
+            HTTP(s): The size is in the "content-length" response header.
+            FTP: Open a FTP connection to retrieve the size of the file.
 
         Returns:
             The size of the file in bytes.
@@ -266,20 +299,36 @@ class Transfer:
         Raises:
             TransferException: If it was not possible to get the size of the file,
                 e.g. a 404.
+            ValueError: If the source url contains an unknown protocol.
         """
 
-        size_in_bytes = requests.head(
-            self.source_url,
-            allow_redirects=True,
-            headers={"host": self.domain, "Accept-Encoding": "identity"},
-        ).headers.get("content-length", None)
+        source_url_parsed = urlparse(self.source_url)
+        if source_url_parsed.scheme in ("http", "https"):
+            size_in_bytes = requests.head(
+                self.source_url,
+                allow_redirects=True,
+                headers={"host": self.domain, "Accept-Encoding": "identity"},
+            ).headers.get("content-length", None)
 
-        if not size_in_bytes:
-            log.error(
-                "Failed to get size of file on Castor", source_url=self.source_url
-            )
-            raise TransferException
-
+            if not size_in_bytes:
+                log.error(
+                    "Failed to get size of file on Castor", source_url=self.source_url
+                )
+                raise TransferException
+        elif source_url_parsed.scheme in ("ftp",):
+            try:
+                with FTP(
+                    host=source_url_parsed.netloc,
+                ) as ftp:
+                    ftp.login(
+                        user=self.source_username,
+                        passwd=self.source_password,
+                    )
+                    size_in_bytes = ftp.size(source_url_parsed.path)
+            except (gaierror, error_perm) as e:
+                raise TransferException(f"Failed to get size of file on the FTP: {e}")
+        else:
+            raise ValueError(f"Protocol not supported: {self.source_url}")
         return size_in_bytes
 
     def _check_free_space(self):

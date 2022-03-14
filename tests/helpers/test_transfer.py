@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import pytest
+from ftplib import error_perm
+from socket import gaierror
 from unittest.mock import MagicMock, patch
+from urllib.parse import urlparse
 
 from hvac.exceptions import InvalidPath, Forbidden
 from paramiko import SSHException
@@ -51,6 +54,23 @@ def test_build_curl_command():
     assert (
         curl_command
         == f"curl -w '{w_params}' -L -H 'host: {domain}' -H 'range: bytes={r}' -r {r} -S -s -o '{dest}' '{src}'"
+    )
+
+
+def test_build_curl_command_credentials():
+    dest = "dest file"
+    src = "source file"
+    domain = "S3 domain"
+    r = "0-100"
+    username = "user"
+    password = "password"
+    w_params = "%{http_code},time: %{time_total}s,size: %{size_download} bytes,speed: %{speed_download}b/s"
+    curl_command = build_curl_command(
+        dest, src, domain, r, source_username=username, source_password=password
+    )
+    assert (
+        curl_command
+        == f"curl -w '{w_params}' -L -H 'host: {domain}' -H 'range: bytes={r}' -r {r} -S -s -o '{dest}' -u {username}:{password} '{src}'"
     )
 
 
@@ -127,7 +147,12 @@ class TestTransfer:
 
         # Check if curl command gets called with the correct arguments
         build_curl_command_mock.assert_called_once_with(
-            "dest", "http://url/bucket/file.mxf", "domain", "0-100"
+            "dest",
+            "http://url/bucket/file.mxf",
+            "domain",
+            "0-100",
+            source_username=transfer.source_username,
+            source_password=transfer.source_password,
         )
 
         assert client_mock.exec_command() == (stdin_mock, stdout_mock, stderr_mock)
@@ -211,6 +236,31 @@ class TestTransfer:
         log_record = caplog.records[0]
         assert log_record.level == "error"
         assert log_record.message == "Failed to get size of file on Castor"
+
+    @patch("app.helpers.transfer.FTP")
+    def test_fetch_size_ftp(self, ftp_mock, transfer):
+        transfer.source_url = transfer.source_url.replace("http", "ftp")
+        transfer.source_username = "user"
+        transfer.source_password = "pass"
+        ftp_client = ftp_mock().__enter__()
+        ftp_client.size.return_value = 2000
+        size = transfer._fetch_size()
+
+        ftp_client.login.assert_called_once_with(user="user", passwd="pass")
+        assert size == 2000
+
+    @patch("app.helpers.transfer.FTP")
+    @pytest.mark.parametrize("error", [gaierror, error_perm])
+    def test_fetch_size_ftp_error(self, ftp_mock, transfer, error):
+        transfer.source_url = transfer.source_url.replace("http", "ftp")
+        ftp_mock.side_effect = error
+        with pytest.raises(TransferException):
+            transfer._fetch_size()
+
+    def test_fetch_size_unknown_protocol(self, transfer):
+        transfer.source_url = transfer.source_url.replace("http", "ldap")
+        with pytest.raises(ValueError):
+            transfer._fetch_size()
 
     def test_prepare_target_transfer(self, transfer):
         """File does not exist and folder is created"""
@@ -512,6 +562,8 @@ class TestTransfer:
         assert transfer.dest_folder_tmp_dirname == "s3-transfer-test/.file.mxf"
         assert transfer.source_url == "http://url/bucket/file.mxf"
         assert transfer.size_in_bytes == 0
+        assert not transfer.source_username
+        assert not transfer.source_password
 
         transfer.transfer()
         # Initialisation of the remote client
@@ -537,3 +589,18 @@ class TestTransfer:
         )
 
         assert transfer.size_in_bytes == 100
+
+    def test_transfer_from_message_credentials(self, transfer_message):
+        """
+        If the transfer message contains source credentials,
+        they'll get fetched from the Vault.
+        """
+        # Add source credentials to message
+        transfer_message["source"]["credentials"] = "creds"
+        # Mock the Vault
+        vault_mock = MagicMock()
+        vault_mock.get_username.return_value = "source_user"
+        vault_mock.get_password.return_value = "source_pass"
+        transfer = Transfer(transfer_message, vault_mock)
+        assert transfer.source_username == "source_user"
+        assert transfer.source_password == "source_pass"
