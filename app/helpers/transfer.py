@@ -338,22 +338,21 @@ class Transfer:
         to be allowed to send the file over. If the space is lower, then it
         will retry until the space is freed.
 
-        This free space check is optional, in the sense that if one or more of
-        the needed config values are empty, it will assume that a transfer is
-        always allowed.
+        This free space check is optional, in the sense that if the
+        `free_space_percentage` config var is empty, it will assume that
+        a transfer is always allowed.
         """
         try:
             percentage_limit = int(dest_conf["free_space_percentage"])
         except ValueError:
             percentage_limit = ""
-        file_system = dest_conf["file_system"]
 
-        # If percentage limit or file system is not filled in, skip the check.
-        if percentage_limit and file_system:
+        # If percentage limit is not filled in, skip the check.
+        if percentage_limit:
             while True:
                 # Check the used space in percentage
                 _stdin, stdout, _stderr = self.remote_client.exec_command(
-                    f"df --output=pcent {file_system} | tail -1"
+                    f"df --output=pcent {self.dest_folder_dirname} | tail -1"
                 )
                 out = stdout.readlines()
                 # Parse the used percentage as an int.

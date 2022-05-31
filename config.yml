@@ -11,7 +11,6 @@ app:
     prefetch_count: !ENV ${RABBITMQ_PREFETCH_COUNT}
   destination:
     free_space_percentage: !ENV ${SSH_FREE_SPACE_PERCENTAGE}
-    file_system: !ENV ${SSH_FILE_SYSTEM}
   vault:
     url: !ENV ${VAULT_URL}
     token: !ENV ${VAULT_TOKEN}
