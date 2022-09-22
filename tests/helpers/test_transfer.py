@@ -480,6 +480,24 @@ class TestTransfer:
         assert log_record.level == "error"
         assert log_record.message == "Error occurred when assembling parts: error"
 
+    def test_check_target_folder(self, transfer):
+        """Target folder exists."""
+        transfer._check_target_folder()
+
+        transfer.sftp.stat.assert_called_once_with("/s3-transfer-test")
+
+    def test_check_target_folder_not_exists(self, transfer):
+        """Target folder doesn't exist."""
+        sftp_mock = transfer.sftp
+
+        sftp_mock.stat.side_effect = FileNotFoundError
+
+        with pytest.raises(TransferException) as e:
+            transfer._check_target_folder()
+
+        sftp_mock.stat.assert_called_once_with("/s3-transfer-test")
+        assert str(e.value) == "Target folder does not exist: /s3-transfer-test"
+
     @patch("time.sleep", return_value=None)
     @patch.dict(
         "app.helpers.transfer.dest_conf",
@@ -538,6 +556,7 @@ class TestTransfer:
         assert not len(caplog.records)
 
     @patch.object(Transfer, "_init_remote_client")
+    @patch.object(Transfer, "_check_target_folder")
     @patch.object(Transfer, "_check_free_space")
     @patch.object(Transfer, "_fetch_size")
     @patch.object(Transfer, "_prepare_target_transfer")
@@ -550,6 +569,7 @@ class TestTransfer:
         prepare_target_transfer_mock,
         fetch_size_mock,
         check_free_space_mock,
+        check_target_folder_mock,
         init_remote_client_mock,
         transfer,
         caplog,
@@ -572,6 +592,8 @@ class TestTransfer:
         # Initialisation of the remote client
         assert init_remote_client_mock.call_count == 2
         assert transfer.remote_client.close.call_count == 2
+        # Check target folder
+        check_target_folder_mock.assert_called_once()
         # Free space check
         check_free_space_mock.assert_called_once()
         # Fetch size
