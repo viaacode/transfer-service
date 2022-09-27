@@ -492,7 +492,7 @@ class TestTransfer:
 
         sftp_mock.stat.side_effect = FileNotFoundError
 
-        with pytest.raises(TransferException) as e:
+        with pytest.raises(OSError) as e:
             transfer._check_target_folder()
 
         sftp_mock.stat.assert_called_once_with("/s3-transfer-test")
