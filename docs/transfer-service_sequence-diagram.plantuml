@@ -1,8 +1,8 @@
-@startuml s3-transfer-service
+@startuml transfer-service
 
 autonumber
 
-title S3 Transfer Service
+title Transfer Service
 
 participant rabbit as "RabbitMQ"
 participant sts as "s3-transfer-service"

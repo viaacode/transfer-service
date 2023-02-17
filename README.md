@@ -1,4 +1,4 @@
-# S3 Transfer Service
+# Transfer Service
 
 ## Synopsis
 
@@ -24,7 +24,7 @@ There is an optional free space check in which the remote server needs to have a
 <details>
   <summary>Sequence diagram (click to expand)</summary>
 
-  ![S3 Transfer Service](http://www.plantuml.com/plantuml/proxy?src=https://raw.githubusercontent.com/viaacode/s3-transfer-service/main/docs/s3-t-s_sequence-diagram.plantuml&fmt=svg)
+  ![Transfer Service](http://www.plantuml.com/plantuml/proxy?src=https://raw.githubusercontent.com/viaacode/transfer-service/main/docs/transfer-service_sequence-diagram.plantuml&fmt=svg)
 
 </details>
 
@@ -32,7 +32,7 @@ There is an optional free space check in which the remote server needs to have a
 
 1. Clone this repository with:
 
-   `$ git clone https://github.com/viaacode/s3-transfer-service.git`
+   `$ git clone https://github.com/viaacode/transfer-service.git`
 
 2. Change into the new directory.
 
@@ -44,28 +44,54 @@ There is an optional free space check in which the remote server needs to have a
     You can use `!ENV ${EXAMPLE}` as a config value to make the application get the `EXAMPLE` environment variable.
 
 ### Running locally
-1. Install the external modules:
 
-    `$ poetry install`
+**Note**: As per the aforementioned requirements, this is a Python3
+application. Check your Python version with `python --version`. You may want to
+substitute the `python` command below with `python3` if your default Python version
+is < 3.
 
-2. Run the tests (and setting the values in `.env.example` first):
+1. Start by creating a virtual environment:
 
-    `$ export $(grep -v '^#' .env.example | xargs -0); poetry run pytest -v --cov=./app`
+    `$ python -m venv env`
 
-3. Run the application:
+2. Activate the virtual environment:
 
-    `$ poetry run python main.py`
+    `$ source env/bin/activate`
+
+3. Install the external modules:
+
+    ```
+    $ pip install -r requirements.txt \
+        --extra-index-url http://do-prd-mvn-01.do.viaa.be:8081/repository/pypi-all/simple \
+        --trusted-host do-prd-mvn-01.do.viaa.be
+    ```
+
+4. Run the tests (and set the values in `.env.example`) with:
+
+    To be able to run the tests, the test dependencies need to be installed as well:
+
+    ```
+    $ pip install -r requirements-test.txt
+    ```
+
+    Then run:
+
+    `$ export $(grep -v '^#' .env.example | xargs); pytest -v --cov=./app`
+
+5. Run the application:
+
+    `$ python main.py`
 
 ### Running using Docker
 
 1. Build the container:
 
-   `$ docker build -t s3-transfer-service:latest .`
+   `$ docker build -t transfer-service:latest .`
 
 2. Run the test container:
 
-   `$ docker run --env-file .env.example --rm --entrypoint python s3-transfer-service:latest -m pytest -v --cov=./app`
+   `$ docker run --env-file .env.example --rm --entrypoint python transfer-service:latest -m pytest -v --cov=./app`
 
 2. Run the container (with specified `.env` file):
 
-   `$ docker run --env-file .env --rm s3-transfer-service:latest`
+   `$ docker run --env-file .env --rm transfer-service:latest`
