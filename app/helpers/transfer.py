@@ -331,6 +331,17 @@ class Transfer:
             raise ValueError(f"Protocol not supported: {self.source_url}")
         return size_in_bytes
 
+    def _check_target_folder(self):
+        """Check if target folder exists.
+
+        Raises:
+            OSError: When target folder does not exist.
+        """
+        try:
+            self.sftp.stat(self.dest_folder_dirname)
+        except FileNotFoundError:
+            raise OSError(f"Target folder does not exist: {self.dest_folder_dirname}")
+
     def _check_free_space(self):
         """Check if there is sufficient free space on the remote server.
 
@@ -537,6 +548,9 @@ class Transfer:
 
             # initialize the SSH client
             self._init_remote_client()
+
+            # Check if target folder exists
+            self._check_target_folder()
 
             # Check freespace
             self._check_free_space()
