@@ -69,7 +69,9 @@ class EventListener:
         try:
             Transfer(transfer_message, self.vault_client).transfer()
         except (TransferPartException, TransferException, OSError) as transfer_error:
-            self.log.error(f"Transfer failed - {transfer_error}")
+            self.log.error(
+                f"Transfer failed - {transfer_error}", transfer_message=transfer_message
+            )
             cb_nack = functools.partial(self.nack_message, channel, delivery_tag)
             self.rabbit_client.connection.add_callback_threadsafe(cb_nack)
             # Send outcome
