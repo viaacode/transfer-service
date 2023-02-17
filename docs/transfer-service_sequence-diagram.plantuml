@@ -5,15 +5,15 @@ autonumber
 title Transfer Service
 
 participant rabbit as "RabbitMQ"
-participant sts as "s3-transfer-service"
+participant self as "transfer-service"
 participant tra as "Remote Server"
 participant os as "Object Store"
 
-activate sts
-sts -> rabbit: Listen to queue
+activate self
+self -> rabbit: Listen to queue
 loop
-    rabbit -> sts: Transfer message request
-    sts -> tra: Connect via SSH
+    rabbit -> self: Transfer message request
+    self -> tra: Connect via SSH
     opt SSH_FREE_SPACE_PERCENTAGE && SSH_FILE_SYSTEM
         loop While not enough free space
             tra -> tra: Check free space
