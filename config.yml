@@ -14,6 +14,7 @@ app:
   vault:
     url: !ENV ${VAULT_URL}
     token: !ENV ${VAULT_TOKEN}
+    namespace: !ENV ${VAULT_NAMESPACE}
   pulsar:
     host: !ENV ${PULSAR_HOST}
     port: 6650

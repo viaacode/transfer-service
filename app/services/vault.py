@@ -12,7 +12,10 @@ config = config_parser.app_cfg
 class VaultClient:
     def __init__(self):
         self.client = hvac.Client(
-            url=config["vault"]["url"], verify=False, token=config["vault"]["token"]
+            url=config["vault"]["url"],
+            token=config["vault"]["token"],
+            namespace=config["vault"]["namespace"],
+            verify=False,
         )
 
         self.secrets = {}

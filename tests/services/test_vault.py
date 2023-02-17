@@ -20,11 +20,16 @@ class TestPulsarClient:
         """Check if the vault client got instantiated correctly."""
         vault_client = VaultClient()
         client.assert_called_once_with(
-            **{"url": "https://vault/", "verify": False, "token": "vault_token"}
+            **{
+                "url": "https://vault/",
+                "token": "vault_token",
+                "namespace": "namespace",
+                "verify": False,
+            }
         )
         assert len(vault_client.secrets) == 0
 
-    def test_fetch_secret(self, vault_client):
+    def test_fetch_secret(self, vault_client: VaultClient):
         path = "engine/name"
         assert path not in vault_client.secrets
         vault_client.fetch_secret(path)
@@ -33,24 +38,24 @@ class TestPulsarClient:
             **{"path": "name", "mount_point": "engine"}
         )
 
-    def test_get_username(self, vault_client):
+    def test_get_username(self, vault_client: VaultClient):
         path = "path"
         vault_client.secrets["path"] = {"data": {"username": "user"}, "metadata": {}}
 
         assert vault_client.get_username(path) == "user"
 
-    def test_get_password(self, vault_client):
+    def test_get_password(self, vault_client: VaultClient):
         path = "path"
         vault_client.secrets["path"] = {"data": {"password": "pass"}, "metadata": {}}
 
         assert vault_client.get_password(path) == "pass"
 
-    def test_get_username_key_error(self, vault_client):
+    def test_get_username_key_error(self, vault_client: VaultClient):
         path = "path"
         with pytest.raises(KeyError):
             vault_client.get_username(path)
 
-    def test_get_password_key_error(self, vault_client):
+    def test_get_password_key_error(self, vault_client: VaultClient):
         path = "path"
         with pytest.raises(KeyError):
             vault_client.get_password(path)
