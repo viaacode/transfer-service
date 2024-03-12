@@ -317,9 +317,7 @@ class Transfer:
                 raise TransferException
         elif source_url_parsed.scheme in ("ftp",):
             try:
-                with FTP(
-                    host=source_url_parsed.netloc,
-                ) as ftp:
+                with FTP(host=source_url_parsed.netloc, encoding="utf-8") as ftp:
                     ftp.login(
                         user=self.source_username,
                         passwd=self.source_password,
