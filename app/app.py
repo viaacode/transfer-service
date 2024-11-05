@@ -68,7 +68,7 @@ class EventListener:
         # Start the transfer
         try:
             Transfer(transfer_message, self.vault_client).transfer()
-        except (TransferPartException, TransferException, OSError) as transfer_error:
+        except (TransferPartException, TransferException, OSError, ValueError) as transfer_error:
             self.log.error(
                 f"Transfer failed - {transfer_error}", transfer_message=transfer_message
             )
