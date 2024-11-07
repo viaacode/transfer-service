@@ -12,7 +12,7 @@ There is an optional free space check in which the remote server needs to have a
 
 - Git
 - Docker (optional)
-- Python 3.10+
+- Python 3.12+
 - Access to the [meemoo PyPi](http://do-prd-mvn-01.do.viaa.be:8081)
 - Poetry
 

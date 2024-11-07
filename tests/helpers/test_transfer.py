@@ -712,7 +712,7 @@ class TestTransfer:
         check_free_space_mock.assert_called_once()
         # Fetch size
         fetch_size_mock.assert_called_once()
-        # Prepare the target server for transferring the parts
+        # Prepare the target server for transferring the file
         prepare_target_transfer_mock.assert_called_once()
         # Transfer file
         transfer_file_mock.assert_called_once()
