@@ -181,6 +181,7 @@ void tagNewImage(String environment) {
     oc project $OC_PROJECT
     oc tag $APP_NAME:$GIT_SHORT_COMMIT $APP_NAME:${environment}
     # Check the status of the rollout
-    oc rollout status deployment/$APP_NAME-${environment} --watch=true --timeout=10m
+    oc rollout status deployment/$APP_NAME-sip-${environment} --watch=true --timeout=10m
+    oc rollout status deployment/$APP_NAME-tra-${environment} --watch=true --timeout=10m
     """
 }
