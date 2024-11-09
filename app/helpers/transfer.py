@@ -305,6 +305,8 @@ class Transfer:
             self.dest_file_tmp_full,
             self.source_url,
             self.domain,
+            source_username=self.source_username,
+            source_password=self.source_password,
         )
 
         try:

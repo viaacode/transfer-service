@@ -212,6 +212,8 @@ class TestTransfer:
             "/s3-transfer-test/file.mxf.part/file.mxf.tmp",
             "http://url/bucket/file.mxf",
             "domain",
+            source_username=None,
+            source_password=None,
         )
 
         # Check if tmp file is correct size
@@ -314,6 +316,8 @@ class TestTransfer:
             "/s3-transfer-test/file.mxf.part/file.mxf.tmp",
             "http://url/bucket/file.mxf",
             "domain",
+            source_username=None,
+            source_password=None,
         )
 
         # Check if tmp file is correct size
@@ -371,6 +375,8 @@ class TestTransfer:
             "/s3-transfer-test/file.mxf.part/file.mxf.tmp",
             "http://url/bucket/file.mxf",
             "domain",
+            source_username=None,
+            source_password=None,
         )
 
         # Check if tmp file is correct size
@@ -432,6 +438,8 @@ class TestTransfer:
             "/s3-transfer-test/file.mxf.part/file.mxf.tmp",
             "http://url/bucket/file.mxf",
             "domain",
+            source_username=None,
+            source_password=None,
         )
 
         # Check if tmp file is correct size
@@ -495,6 +503,8 @@ class TestTransfer:
             "/s3-transfer-test/file.mxf.part/file.mxf.tmp",
             "http://url/bucket/file.mxf",
             "domain",
+            source_username=None,
+            source_password=None,
         )
 
         # Check if tmp file is correct size
@@ -561,6 +571,8 @@ class TestTransfer:
             "/s3-transfer-test/file.mxf.part/file.mxf.tmp",
             "http://url/bucket/file.mxf",
             "domain",
+            source_username=None,
+            source_password=None,
         )
 
         # Check if tmp file is correct size
