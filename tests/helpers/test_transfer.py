@@ -4,56 +4,26 @@ import pytest
 from ftplib import error_perm
 from socket import gaierror
 from unittest.mock import MagicMock, patch
-from urllib.parse import urlparse
 
 from hvac.exceptions import InvalidPath, Forbidden
 from paramiko import SSHException
 
 from app.helpers.transfer import (
     build_curl_command,
-    calculate_filename_part,
-    calculate_ranges,
     Transfer,
     TransferException,
-    TransferPartException,
 )
-
-
-@pytest.mark.parametrize(
-    "size, number_parts, expected",
-    [
-        (1303, 4, ["0-326", "327-652", "653-977", "978-1303"]),
-        (6, 6, ["0-1", "2-2", "3-3", "4-4", "5-5", "6-6"]),
-        (1000, 1, ["0-1000"]),
-    ],
-)
-def test_calculate_ranges(size, number_parts, expected):
-    assert calculate_ranges(size, number_parts) == expected
-
-
-@pytest.mark.parametrize(
-    "size, number_parts, side_effect, message",
-    [
-        (1000, 0, ZeroDivisionError, "division by zero"),
-        (2, 4, ValueError, "Amount of parts '4' is greater than the size '2'"),
-    ],
-)
-def test_calculate_ranges_error(size, number_parts, side_effect, message):
-    with pytest.raises(side_effect) as e:
-        calculate_ranges(size, number_parts)
-    assert str(e.value) == message
 
 
 def test_build_curl_command():
     dest = "dest file"
     src = "source file"
     domain = "S3 domain"
-    r = "0-100"
     w_params = "%{http_code},time: %{time_total}s,size: %{size_download} bytes,speed: %{speed_download}b/s"
-    curl_command = build_curl_command(dest, src, domain, r)
+    curl_command = build_curl_command(dest, src, domain)
     assert (
         curl_command
-        == f"curl -w '{w_params}' -L -H 'host: {domain}' -H 'range: bytes={r}' -r {r} -S -s -o '{dest}' '{src}'"
+        == f"curl -w '{w_params}' -L -H 'host: {domain}' -S -s -o '{dest}' '{src}'"
     )
 
 
@@ -61,26 +31,15 @@ def test_build_curl_command_credentials():
     dest = "dest file"
     src = "source file"
     domain = "S3 domain"
-    r = "0-100"
     username = "user"
     password = "password"
     w_params = "%{http_code},time: %{time_total}s,size: %{size_download} bytes,speed: %{speed_download}b/s"
     curl_command = build_curl_command(
-        dest, src, domain, r, source_username=username, source_password=password
+        dest, src, domain, source_username=username, source_password=password
     )
     assert (
         curl_command
-        == f"curl -w '{w_params}' -L -H 'host: {domain}' -H 'range: bytes={r}' -r {r} -S -s -o '{dest}' -u {username}:{password} '{src}'"
-    )
-
-
-def test_calculate_filename_part():
-    assert calculate_filename_part("file.mxf", 0) == "file.mxf.part0"
-
-
-def test_calculate_filename_part_directory():
-    assert (
-        calculate_filename_part("file.mxf", 0, directory="dir") == "dir/file.mxf.part0"
+        == f"curl -w '{w_params}' -L -H 'host: {domain}' -S -s -o '{dest}' -u {username}:{password} '{src}'"
     )
 
 
@@ -116,106 +75,6 @@ class TestTransfer:
         vault_mock.fetch_secret.side_effect = side_effect
         with pytest.raises(TransferException):
             Transfer(transfer_message, vault_mock)
-
-    @patch("app.helpers.transfer.build_curl_command", return_value="curl")
-    @patch("app.helpers.transfer.SSHClient")
-    def test_transfer_part(
-        self, ssh_client_mock, build_curl_command_mock, transfer, caplog
-    ):
-        """Successful transfer of a part."""
-        stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
-        # Mock the stdout result of the cURL command
-        stdout_result = ["206,time: 5s,size: 1000 bytes,speed: 200b/s"]
-        stdout_mock.readlines.return_value = stdout_result
-        # Mock stderr to be empty
-        stderr_mock.readlines.return_value = []
-
-        # Mock exec command
-        client_mock = ssh_client_mock().__enter__()
-        client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
-
-        transfer._transfer_part("dest", "0-100")
-
-        assert client_mock.set_missing_host_key_policy.call_count == 1
-        assert client_mock.connect.call_count == 1
-        assert client_mock.connect.call_args.args == ("tst-server",)
-        assert client_mock.connect.call_args.kwargs == {
-            "port": 22,
-            "username": "ssh_user",
-            "password": "ssh_pass",
-        }
-
-        # Check if curl command gets called with the correct arguments
-        build_curl_command_mock.assert_called_once_with(
-            "dest",
-            "http://url/bucket/file.mxf",
-            "domain",
-            "0-100",
-            source_username=transfer.source_username,
-            source_password=transfer.source_password,
-        )
-
-        assert client_mock.exec_command() == (stdin_mock, stdout_mock, stderr_mock)
-        assert "Successfully cURLed part" in caplog.messages
-
-    @patch("app.helpers.transfer.SSHClient")
-    @patch("time.sleep", MagicMock())
-    def test_transfer_part_status_code(self, ssh_client_mock, transfer, caplog):
-        """HTTP error occurs when transferring a part."""
-        stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
-        # Mock the stdout result of the cURL command
-        stdout_result = ["416,time: 5s,size: 1000 bytes,speed: 200b/s"]
-        stdout_mock.readlines.return_value = stdout_result
-        # Mock stderr to be empty
-        stderr_mock.readlines.return_value = []
-
-        # Mock exec command
-        client_mock = ssh_client_mock().__enter__()
-        client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
-        with pytest.raises(TransferPartException):
-            transfer._transfer_part("dest", "0-100")
-
-        assert client_mock.set_missing_host_key_policy.call_count == 3
-        assert client_mock.connect.call_count == 3
-        assert client_mock.connect.call_args.args == ("tst-server",)
-        assert client_mock.connect.call_args.kwargs == {
-            "port": 22,
-            "username": "ssh_user",
-            "password": "ssh_pass",
-        }
-        assert client_mock.exec_command() == (stdin_mock, stdout_mock, stderr_mock)
-        assert (
-            "Error occurred when cURLing part with status code: 416" in caplog.messages
-        )
-
-    @patch("app.helpers.transfer.SSHClient")
-    @patch("time.sleep", MagicMock())
-    def test_transfer_part_stderr(self, ssh_client_mock, transfer, caplog):
-        """Transferring a part resulting in stderr output."""
-        stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
-        # Mock the stderr result of the cURL command
-        stderr_result = ["Error"]
-        stderr_mock.readlines.return_value = stderr_result
-
-        # Mock exec command
-        client_mock = ssh_client_mock().__enter__()
-        client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
-        with pytest.raises(TransferPartException):
-            transfer._transfer_part("dest", "0-100")
-        assert "Error occurred when cURLing part: ['Error']" in caplog.messages
-
-    @patch("app.helpers.transfer.SSHClient")
-    @patch("time.sleep", MagicMock())
-    def test_transfer_part_ssh_exception(self, ssh_client_mock, transfer, caplog):
-        """SSH Exception occurs when connecting."""
-        client_mock = ssh_client_mock().__enter__()
-        client_mock.connect.side_effect = SSHException("Connection error")
-        with pytest.raises(TransferPartException):
-            transfer._transfer_part("dest", "0-100")
-        assert not client_mock.exec_command.call_count
-        assert (
-            "SSH Error occurred when cURLing part: Connection error" in caplog.messages
-        )
 
     @patch("requests.head")
     def test_fetch_size(self, head_mock, transfer):
@@ -320,46 +179,16 @@ class TestTransfer:
         assert sftp_mock.stat.call_count == 2
         sftp_mock.mkdir.assert_called_once_with("/s3-transfer-test/file.mxf.part")
 
-    @patch("app.helpers.transfer.Transfer._transfer_part")
-    @patch("app.helpers.transfer.calculate_ranges", return_value=["0-1", "1-2"])
-    def test_transfer_parts(
-        self, calculate_ranges_mock, transfer_part_mock, transfer, caplog
-    ):
-        """Transfer parts successfully."""
-        transfer._transfer_parts()
-
-        log_records = caplog.records
-        assert len(log_records) == 2
-        for log_record in log_records:
-            assert log_record.level == "debug"
-
-        assert (
-            "Thread started for: /s3-transfer-test/file.mxf.part/file.mxf.part0"
-            in caplog.messages
-        )
-        assert (
-            "Thread started for: /s3-transfer-test/file.mxf.part/file.mxf.part1"
-            in caplog.messages
-        )
-
-        assert transfer_part_mock.call_count == 2
-        call_args = [call_args.args for call_args in transfer_part_mock.call_args_list]
-        assert (
-            "/s3-transfer-test/file.mxf.part/file.mxf.part1",
-            "1-2",
-        ) in call_args
-
-        assert (
-            "/s3-transfer-test/file.mxf.part/file.mxf.part0",
-            "0-1",
-        ) in call_args
-
-    @patch("app.helpers.transfer.build_assemble_command", return_value="cat")
-    def test_assemble_parts(self, build_assemble_command_mock, transfer, caplog):
-        """Successfully assemble the parts."""
+    @patch("app.helpers.transfer.build_curl_command", return_value="curl")
+    def test_transfer_file(self, build_curl_command_mock, transfer, caplog):
+        """Successfully transfer the file."""
         stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
+        # Mock the stdout result of the cURL command
+        stdout_result = ["206,time: 5s,size: 1000 bytes,speed: 200b/s"]
+        stdout_mock.readlines.return_value = stdout_result
+        # Mock stderr to be empty
+        stderr_mock.readlines.return_value = []
 
-        # Mock exec command
         client_mock = transfer.remote_client
         client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
 
@@ -368,30 +197,28 @@ class TestTransfer:
         # Mock check filesize of transferred file
         sftp_mock.stat.return_value.st_size = 1000
 
-        transfer._assemble_parts()
+        transfer._transfer_file()
 
         # Check logged message
         log_record = caplog.records[0]
         assert log_record.level == "info"
-        assert log_record.message == "Start assembling the parts"
-        assert log_record.destination == "/s3-transfer-test/file.mxf"
+        assert log_record.message == "Successfully cURLed tmp file"
+        assert log_record.destination == "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
 
         assert client_mock.exec_command.call_count == 2
 
-        # Check call of build assemble command
-        build_assemble_command_mock.assert_called_once_with(
-            "/s3-transfer-test/file.mxf.part", "file.mxf", 4
+        # Check if curl command gets called with the correct arguments
+        build_curl_command_mock.assert_called_once_with(
+            "/s3-transfer-test/file.mxf.part/file.mxf.tmp",
+            "http://url/bucket/file.mxf",
+            "domain",
+            source_username=None,
+            source_password=None,
         )
-
-        # Check if build command has executed
-        assert client_mock.exec_command.call_args_list[0].args == ("cat",)
-
-        # Doesn't change in to dir
-        sftp_mock.chdir.assert_not_called()
 
         # Check if tmp file is correct size
         sftp_mock.stat.assert_called_once_with(
-            "/s3-transfer-test/file.mxf.part/file.mxf.tmp",
+            "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
         )
 
         # Check if tmp file renamed
@@ -404,13 +231,6 @@ class TestTransfer:
             "touch '/s3-transfer-test/file.mxf'",
         )
 
-        # Check if remove parts command has been executed for each part
-        assert sftp_mock.remove.call_count == 4
-        for idx, cargs in enumerate(sftp_mock.remove.call_args_list):
-            assert cargs.args == (
-                f"/s3-transfer-test/file.mxf.part/file.mxf.part{idx}",
-            )
-
         # Check if tmp dir has been removed
         sftp_mock.rmdir.assert_called_once_with(
             "/s3-transfer-test/file.mxf.part",
@@ -422,14 +242,56 @@ class TestTransfer:
         assert log_record.message == "File successfully transferred"
         assert log_record.destination == "/s3-transfer-test/file.mxf"
 
-    @patch("app.helpers.transfer.build_assemble_command", return_value="cat")
-    def test_assemble_parts_different_size(
-        self, build_assemble_command_mock, transfer, caplog
-    ):
-        """Assembled file has incorrect file size."""
+    def test_transfer_file_stderr(self, transfer, caplog):
+        """Transferring a file resulting in stderr output."""
         stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
+        # Mock the stderr result of the cURL command
+        stderr_result = ["Error"]
+        stderr_mock.readlines.return_value = stderr_result
 
-        # Mock exec command
+        client_mock = transfer.remote_client
+        client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
+
+        with pytest.raises(TransferException):
+            transfer._transfer_file()
+        assert "Error occurred when cURLing tmp file: ['Error']" in caplog.messages
+
+        sftp_mock = transfer.sftp
+        # Check if tmp file not renamed
+        sftp_mock.rename.assert_not_called()
+
+        # Check if tmp dir has not been removed
+        sftp_mock.rmdir.assert_not_called()
+
+    def test_transfer_file_ssh_exception(self, transfer, caplog):
+        """SSH Exception occurs when connecting."""
+        client_mock = transfer.remote_client
+        client_mock.exec_command.side_effect = SSHException("Connection error")
+        with pytest.raises(TransferException):
+            transfer._transfer_file()
+        assert client_mock.exec_command.call_count == 1
+        assert (
+            "SSH Error occurred when cURLing tmp file: Connection error"
+            in caplog.messages
+        )
+
+        sftp_mock = transfer.sftp
+        # Check if tmp file not renamed
+        sftp_mock.rename.assert_not_called()
+
+        # Check if tmp dir has not been removed
+        sftp_mock.rmdir.assert_not_called()
+
+    @patch("app.helpers.transfer.build_curl_command", return_value="curl")
+    def test_transfer_file_diff_file(self, build_curl_command_mock, transfer, caplog):
+        """Tmp file differs from expected size."""
+        stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
+        # Mock the stdout result of the cURL command
+        stdout_result = ["206,time: 5s,size: 1000 bytes,speed: 200b/s"]
+        stdout_mock.readlines.return_value = stdout_result
+        # Mock stderr to be empty
+        stderr_mock.readlines.return_value = []
+
         client_mock = transfer.remote_client
         client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
 
@@ -439,46 +301,308 @@ class TestTransfer:
         sftp_mock.stat.return_value.st_size = 500
 
         with pytest.raises(TransferException):
-            transfer._assemble_parts()
+            transfer._transfer_file()
 
-        # Tmp file should not be renamed
-        sftp_mock.rename.assert_not_called()
+        # Check logged message
+        log_record = caplog.records[0]
+        assert log_record.level == "info"
+        assert log_record.message == "Successfully cURLed tmp file"
+        assert log_record.destination == "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
 
-        # Check error log
-        log_record = caplog.records[-1]
-        assert log_record.level == "error"
-        assert log_record.message == "Size of assembled file: 500, expected size: 1000"
-        assert log_record.source_url == "http://url/bucket/file.mxf"
-        assert (
-            log_record.destination_filename
-            == "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
+        assert client_mock.exec_command.call_count == 1
+
+        # Check if curl command gets called with the correct arguments
+        build_curl_command_mock.assert_called_once_with(
+            "/s3-transfer-test/file.mxf.part/file.mxf.tmp",
+            "http://url/bucket/file.mxf",
+            "domain",
+            source_username=None,
+            source_password=None,
         )
 
-    @patch("app.helpers.transfer.build_assemble_command", return_value="cat")
-    def test_assemble_parts_os_error(
-        self, build_assemble_command_mock, transfer, caplog
-    ):
-        """An OSError occurred when assembling."""
-        stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
+        # Check if tmp file is correct size
+        sftp_mock.stat.assert_called_once_with(
+            "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
+        )
 
-        # Mock exec command
+        # Check if tmp file not renamed
+        sftp_mock.rename.assert_not_called()
+
+        # Check if tmp dir has not been removed
+        sftp_mock.rmdir.assert_not_called()
+
+        # Check logged message
+        log_record = caplog.records[1]
+        assert log_record.level == "error"
+        assert (
+            log_record.message
+            == "Size of transferred tmp file: 500, expected size: 1000"
+        )
+        assert log_record.destination == "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
+
+    @patch("app.helpers.transfer.build_curl_command", return_value="curl")
+    def test_transfer_file_stat_os_error(
+        self, build_curl_command_mock, transfer, caplog
+    ):
+        """Error when checking filesize of tmp file."""
+        stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
+        # Mock the stdout result of the cURL command
+        stdout_result = ["206,time: 5s,size: 1000 bytes,speed: 200b/s"]
+        stdout_mock.readlines.return_value = stdout_result
+        # Mock stderr to be empty
+        stderr_mock.readlines.return_value = []
+
         client_mock = transfer.remote_client
         client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
 
         sftp_mock = transfer.sftp
-        # Checking filesize returns OSError
-        sftp_mock.stat.side_effect = OSError("error")
+        # Mock check filesize of transferred file
+        sftp_mock.stat.side_effect = OSError("not found")
 
         with pytest.raises(TransferException):
-            transfer._assemble_parts()
+            transfer._transfer_file()
 
-        # Tmp file should not be renamed
+        # Check logged message
+        log_record = caplog.records[0]
+        assert log_record.level == "info"
+        assert log_record.message == "Successfully cURLed tmp file"
+        assert log_record.destination == "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
+
+        assert client_mock.exec_command.call_count == 1
+
+        # Check if curl command gets called with the correct arguments
+        build_curl_command_mock.assert_called_once_with(
+            "/s3-transfer-test/file.mxf.part/file.mxf.tmp",
+            "http://url/bucket/file.mxf",
+            "domain",
+            source_username=None,
+            source_password=None,
+        )
+
+        # Check if tmp file is correct size
+        sftp_mock.stat.assert_called_once_with(
+            "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
+        )
+
+        # Check if tmp file not renamed
         sftp_mock.rename.assert_not_called()
 
-        # Check error log
-        log_record = caplog.records[-1]
+        # Check if tmp dir has not been removed
+        sftp_mock.rmdir.assert_not_called()
+
+        # Check logged message
+        log_record = caplog.records[1]
         assert log_record.level == "error"
-        assert log_record.message == "Error occurred when assembling parts: error"
+        assert (
+            log_record.message
+            == "Error occurred when checking size of transferred tmp file: not found"
+        )
+        assert log_record.tmp_filename == "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
+
+    @patch("app.helpers.transfer.build_curl_command", return_value="curl")
+    def test_transfer_file_rename_os_error(
+        self, build_curl_command_mock, transfer, caplog
+    ):
+        """Error when renaming tmp file."""
+        stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
+        # Mock the stdout result of the cURL command
+        stdout_result = ["206,time: 5s,size: 1000 bytes,speed: 200b/s"]
+        stdout_mock.readlines.return_value = stdout_result
+        # Mock stderr to be empty
+        stderr_mock.readlines.return_value = []
+
+        client_mock = transfer.remote_client
+        client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
+
+        transfer.size_in_bytes = 1000
+        sftp_mock = transfer.sftp
+        # Mock check filesize of transferred file
+        sftp_mock.stat.return_value.st_size = 1000
+        # Fail when renaming5
+
+        sftp_mock.rename.side_effect = OSError("Insufficient rights")
+
+        with pytest.raises(TransferException):
+            transfer._transfer_file()
+
+        # Check logged message
+        log_record = caplog.records[0]
+        assert log_record.level == "info"
+        assert log_record.message == "Successfully cURLed tmp file"
+        assert log_record.destination == "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
+
+        assert client_mock.exec_command.call_count == 1
+
+        # Check if curl command gets called with the correct arguments
+        build_curl_command_mock.assert_called_once_with(
+            "/s3-transfer-test/file.mxf.part/file.mxf.tmp",
+            "http://url/bucket/file.mxf",
+            "domain",
+            source_username=None,
+            source_password=None,
+        )
+
+        # Check if tmp file is correct size
+        sftp_mock.stat.assert_called_once_with(
+            "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
+        )
+
+        # Check if tmp file renamed
+        sftp_mock.rename.assert_called_once_with(
+            "/s3-transfer-test/file.mxf.part/file.mxf.tmp", "/s3-transfer-test/file.mxf"
+        )
+
+        # Check if tmp dir has not been removed
+        sftp_mock.rmdir.assert_not_called()
+
+        # Check logged message
+        log_record = caplog.records[1]
+        assert log_record.level == "error"
+        assert (
+            log_record.message
+            == "Error occurred when renaming tmp file: Insufficient rights"
+        )
+        assert log_record.tmp_filename == "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
+
+    @patch("app.helpers.transfer.build_curl_command", return_value="curl")
+    def test_transfer_file_touch_ssh_error(
+        self, build_curl_command_mock, transfer, caplog
+    ):
+        """SSH error when touching tmp file."""
+        stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
+        # Mock the stdout result of the cURL command
+        stdout_result = ["206,time: 5s,size: 1000 bytes,speed: 200b/s"]
+        stdout_mock.readlines.return_value = stdout_result
+        # Mock stderr to be empty
+        stderr_mock.readlines.return_value = []
+
+        client_mock = transfer.remote_client
+        client_mock.exec_command.side_effect = [
+            (stdin_mock, stdout_mock, stderr_mock),
+            SSHException("No touching!"),
+        ]
+
+        transfer.size_in_bytes = 1000
+        sftp_mock = transfer.sftp
+        # Mock check filesize of transferred file
+        sftp_mock.stat.return_value.st_size = 1000
+
+        with pytest.raises(TransferException):
+            transfer._transfer_file()
+
+        # Check logged message
+        log_record = caplog.records[0]
+        assert log_record.level == "info"
+        assert log_record.message == "Successfully cURLed tmp file"
+        assert log_record.destination == "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
+
+        assert client_mock.exec_command.call_count == 2
+
+        # Check if curl command gets called with the correct arguments
+        build_curl_command_mock.assert_called_once_with(
+            "/s3-transfer-test/file.mxf.part/file.mxf.tmp",
+            "http://url/bucket/file.mxf",
+            "domain",
+            source_username=None,
+            source_password=None,
+        )
+
+        # Check if tmp file is correct size
+        sftp_mock.stat.assert_called_once_with(
+            "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
+        )
+
+        # Check if tmp file renamed
+        sftp_mock.rename.assert_called_once_with(
+            "/s3-transfer-test/file.mxf.part/file.mxf.tmp", "/s3-transfer-test/file.mxf"
+        )
+
+        # Check if touch command has been executed
+        assert client_mock.exec_command.call_args_list[1].args == (
+            "touch '/s3-transfer-test/file.mxf'",
+        )
+
+        # Check if tmp dir has not been removed
+        sftp_mock.rmdir.assert_not_called()
+
+        # Check logged message
+        log_record = caplog.records[1]
+        assert log_record.level == "error"
+        assert (
+            log_record.message
+            == "SSH Error occurred when touching tmp file: No touching!"
+        )
+        assert log_record.tmp_filename == "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
+
+    @patch("app.helpers.transfer.build_curl_command", return_value="curl")
+    def test_transfer_file_rmdir_os_error(
+        self, build_curl_command_mock, transfer, caplog
+    ):
+        """Error when removing tmp dir."""
+        stdin_mock, stdout_mock, stderr_mock = (MagicMock(), MagicMock(), MagicMock())
+        # Mock the stdout result of the cURL command
+        stdout_result = ["206,time: 5s,size: 1000 bytes,speed: 200b/s"]
+        stdout_mock.readlines.return_value = stdout_result
+        # Mock stderr to be empty
+        stderr_mock.readlines.return_value = []
+
+        client_mock = transfer.remote_client
+        client_mock.exec_command.return_value = (stdin_mock, stdout_mock, stderr_mock)
+
+        transfer.size_in_bytes = 1000
+        sftp_mock = transfer.sftp
+        # Mock check filesize of transferred file
+        sftp_mock.stat.return_value.st_size = 1000
+
+        sftp_mock.rmdir.side_effect = OSError("Folder doesn't exist")
+        with pytest.raises(TransferException):
+            transfer._transfer_file()
+
+        # Check logged message
+        log_record = caplog.records[0]
+        assert log_record.level == "info"
+        assert log_record.message == "Successfully cURLed tmp file"
+        assert log_record.destination == "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
+
+        assert client_mock.exec_command.call_count == 2
+
+        # Check if curl command gets called with the correct arguments
+        build_curl_command_mock.assert_called_once_with(
+            "/s3-transfer-test/file.mxf.part/file.mxf.tmp",
+            "http://url/bucket/file.mxf",
+            "domain",
+            source_username=None,
+            source_password=None,
+        )
+
+        # Check if tmp file is correct size
+        sftp_mock.stat.assert_called_once_with(
+            "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
+        )
+
+        # Check if tmp file renamed
+        sftp_mock.rename.assert_called_once_with(
+            "/s3-transfer-test/file.mxf.part/file.mxf.tmp", "/s3-transfer-test/file.mxf"
+        )
+
+        # Check if touch command has been executed
+        assert client_mock.exec_command.call_args_list[1].args == (
+            "touch '/s3-transfer-test/file.mxf'",
+        )
+
+        # Check if tmp dir has been removed
+        sftp_mock.rmdir.assert_called_once_with(
+            "/s3-transfer-test/file.mxf.part",
+        )
+
+        # Check logged message
+        log_record = caplog.records[1]
+        assert log_record.level == "error"
+        assert (
+            log_record.message
+            == "Error occurred when removing tmp folder: Folder doesn't exist"
+        )
+        assert log_record.tmp_folder == "/s3-transfer-test/file.mxf.part"
 
     def test_check_target_folder(self, transfer):
         """Target folder exists."""
@@ -560,12 +684,10 @@ class TestTransfer:
     @patch.object(Transfer, "_check_free_space")
     @patch.object(Transfer, "_fetch_size")
     @patch.object(Transfer, "_prepare_target_transfer")
-    @patch.object(Transfer, "_transfer_parts")
-    @patch.object(Transfer, "_assemble_parts")
+    @patch.object(Transfer, "_transfer_file")
     def test_transfer(
         self,
-        assemble_parts_mock,
-        transfer_parts_mock,
+        transfer_file_mock,
         prepare_target_transfer_mock,
         fetch_size_mock,
         check_free_space_mock,
@@ -583,6 +705,10 @@ class TestTransfer:
         assert transfer.dest_file_basename == "file.mxf"
         assert transfer.dest_file_tmp_basename == "file.mxf.tmp"
         assert transfer.dest_folder_tmp_dirname == "/s3-transfer-test/file.mxf.part"
+        assert (
+            transfer.dest_file_tmp_full
+            == "/s3-transfer-test/file.mxf.part/file.mxf.tmp"
+        )
         assert transfer.source_url == "http://url/bucket/file.mxf"
         assert transfer.size_in_bytes == 0
         assert not transfer.source_username
@@ -590,20 +716,18 @@ class TestTransfer:
 
         transfer.transfer()
         # Initialisation of the remote client
-        assert init_remote_client_mock.call_count == 2
-        assert transfer.remote_client.close.call_count == 2
+        assert init_remote_client_mock.call_count == 1
+        assert transfer.remote_client.close.call_count == 1
         # Check target folder
         check_target_folder_mock.assert_called_once()
         # Free space check
         check_free_space_mock.assert_called_once()
         # Fetch size
         fetch_size_mock.assert_called_once()
-        # Prepare the target server for transferring the parts
+        # Prepare the target server for transferring the file
         prepare_target_transfer_mock.assert_called_once()
-        # Transfer parts
-        transfer_parts_mock.assert_called_once()
-        # Assemble parts
-        assemble_parts_mock.assert_called_once()
+        # Transfer file
+        transfer_file_mock.assert_called_once()
 
         # Check info log
         log_record = caplog.records[0]

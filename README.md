@@ -6,18 +6,14 @@ Lightweight service that will transfer files from the object store to a remote s
 
 We don't want any traffic in the service itself, so the file is transferred from the source URL to the server directly and not via the service in between. Connection to the remote server is via SSH and uses the higher-level SFTP protocol where possible. In the other cases, shell commands are executed.
 
-A transfer will be split up in multiple parts of the same size. Each part will be transferred simultaneously, running in a separate thread. Afterwards
-the file will be assembled into the destination file.
-
 There is an optional free space check in which the remote server needs to have a certain amount of free space (in percentage) before the file is transferred. If that free space is not met, the service will sleep indefinitely until the space is freed. The mountpoint is determined by the destination path of the target file. The free space of the threshold is defined by the ENV var: `SSH_FREE_SPACE_PERCENTAGE`. This var is mandatory but the value may be empty. In fact, if the value is empty then the check will not be executed, and the file will be transferred regardless of the free space on the target server.
 
 ## Prerequisites
 
 - Git
 - Docker (optional)
-- Python 3.10+
+- Python 3.12+
 - Access to the [meemoo PyPi](http://do-prd-mvn-01.do.viaa.be:8081)
-- Poetry
 
 ## Diagrams
 

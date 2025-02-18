@@ -17,7 +17,7 @@ from app.helpers.message_parser import (
     parse_incoming_message,
     InvalidMessageException,
 )
-from app.helpers.transfer import TransferPartException, TransferException, Transfer
+from app.helpers.transfer import TransferException, Transfer
 from app.services.rabbit import RabbitClient
 from app.services.pulsar import PulsarClient
 from app.services.vault import VaultClient
@@ -68,7 +68,11 @@ class EventListener:
         # Start the transfer
         try:
             Transfer(transfer_message, self.vault_client).transfer()
-        except (TransferPartException, TransferException, OSError, ValueError) as transfer_error:
+        except (
+            TransferException,
+            OSError,
+            ValueError,
+        ) as transfer_error:
             self.log.error(
                 f"Transfer failed - {transfer_error}", transfer_message=transfer_message
             )
@@ -134,7 +138,7 @@ class EventListener:
         self.threads.append(thread)
 
     def exit_gracefully(self, signum, frame):
-        """Stop consuming queue but finish current tasks/messages. """
+        """Stop consuming queue but finish current tasks/messages."""
         self.log.info(
             "Received SIGTERM. Waiting for last transfer to finish and then stops."
         )
